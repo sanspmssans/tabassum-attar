@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
+// @ts-ignore
 import "./globals.css";
 import WhatsAppButton from "../components/whatsAppButton";
 import Script from "next/script";

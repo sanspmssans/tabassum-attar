@@ -32,22 +32,20 @@ export default function CheckoutForm({ variant }: { variant: VariantInfo | null 
       const formData = new FormData(e.currentTarget);
       const res = await createCheckoutOrder(formData);
 
-      if (!res.success) {
+      if (!res.success || !res.orderNumber || res.grandTotal === undefined) {
         alert(res.error || 'Failed to place order.');
         setLoading(false);
         return;
       }
 
-      // COD ആണെങ്കിൽ നേരിട്ട് Success പേജിലേക്ക്
       if (res.paymentMethod === 'COD') {
         window.location.href = `/checkout/success?orderNumber=${res.orderNumber}`;
         return;
       }
 
-      // UPI / Cards ആണെങ്കിൽ Razorpay പോപ്പ്-അപ്പ് ഓപ്പൺ ചെയ്യുന്നു
       const options = {
-        key: res.keyId,
-        amount: Math.round(res.grandTotal * 100),
+        key: res.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: Math.round(Number(res.grandTotal) * 100),
         currency: 'INR',
         name: 'TABASSUM ATTAR',
         description: `Order #${res.orderNumber}`,
@@ -103,7 +101,6 @@ export default function CheckoutForm({ variant }: { variant: VariantInfo | null 
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-      {/* Shipping Form */}
       <form onSubmit={handleOrderSubmit} className="md:col-span-2 bg-[#14161d] border border-[#232731] rounded-xl p-6 space-y-4">
         <input type="hidden" name="variantId" value={variant?.id || ''} />
 
@@ -145,7 +142,6 @@ export default function CheckoutForm({ variant }: { variant: VariantInfo | null 
           </div>
         </div>
 
-        {/* Coupon Code Input */}
         <div className="pt-2">
           <label className="text-xs text-gray-400">Discount Coupon / Promo Code</label>
           <input 
@@ -203,7 +199,6 @@ export default function CheckoutForm({ variant }: { variant: VariantInfo | null 
         </button>
       </form>
 
-      {/* Order Summary Sidebar */}
       <div className="bg-[#14161d] border border-[#232731] rounded-xl p-6 space-y-4">
         <h2 className="text-sm font-serif text-[#d9b444] tracking-wider">Order Summary</h2>
 

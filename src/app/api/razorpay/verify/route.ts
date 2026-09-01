@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import prisma from '@/lib/prisma';
+import { PaymentStatus, OrderStatus } from '@prisma/client';
 
 export async function POST(req: Request) {
   try {
@@ -24,19 +25,18 @@ export async function POST(req: Request) {
       );
     }
 
-    // പേയ്‌മെന്റ് ഡാറ്റാബേസിൽ അപ്ഡേറ്റ് ചെയ്യുന്നു
     if (dbOrderId) {
       await prisma.payment.updateMany({
         where: { orderId: dbOrderId },
         data: {
-          paymentStatus: 'PAID',
+          paymentStatus: PaymentStatus.CAPTURED,
           transactionId: razorpay_payment_id,
         },
       });
 
       await prisma.order.update({
         where: { id: dbOrderId },
-        data: { orderStatus: 'CONFIRMED' },
+        data: { orderStatus: OrderStatus.CONFIRMED },
       });
     }
 
