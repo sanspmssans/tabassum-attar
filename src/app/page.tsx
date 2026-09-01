@@ -73,17 +73,13 @@ export default async function HomePage({
           <Link href="/" className="text-2xl font-serif tracking-widest text-[#d9b444] font-bold">
             TABASSUM ATTAR
           </Link>
-          <nav className="hidden md:flex items-center gap-6">
-  <Link href="/" className="hover:text-[#d9b444] transition-colors">Home</Link>
-  <Link href="#collection" className="hover:text-[#d9b444] transition-colors">Collection</Link>
-  
-  {/* ഇവിടെ Track Order ലിങ്ക് ചേർക്കുക */}
-  <Link href="/track" className="hover:text-[#d9b444] text-[#d9b444] font-medium transition-colors">
-    🔍 Track Order
-  </Link>
-
-  <Link href="/admin" className="hover:text-white transition-colors">Admin</Link>
-</nav>
+<nav className="hidden md:flex items-center gap-6">
+            <Link href="/" className="hover:text-[#d9b444] transition-colors">Home</Link>
+            <Link href="#collection" className="hover:text-[#d9b444] transition-colors">Collection</Link>
+            <Link href="/track" className="hover:text-[#d9b444] text-[#d9b444] font-medium transition-colors">
+              🔍 Track Order
+            </Link>
+          </nav>
         </div>
       </header>
 

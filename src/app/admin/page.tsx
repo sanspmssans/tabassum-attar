@@ -1,13 +1,17 @@
 import prisma from '@/lib/prisma';
+import Link from 'next/link';
+import DeleteProductButton from './DeleteProductButton';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminDashboardPage() {
-  const [productCount, categoryCount, totalVariants, products] = await Promise.all([
-    prisma.product.count(),
+  const [productCount, categoryCount, totalVariants, totalOrders, products] = await Promise.all([
+    prisma.product.count({ where: { isActive: true } }),
     prisma.category.count(),
     prisma.productVariant.count(),
+    prisma.order.count().catch(() => 0),
     prisma.product.findMany({
+      where: { isActive: true },
       include: {
         category: true,
         variants: {
@@ -22,17 +26,36 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-serif text-white font-medium">Dashboard Overview</h1>
-        <p className="text-xs text-gray-400 mt-1">Live inventory, catalog statistics, and product pricing</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#232731] pb-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-serif text-white font-medium">Dashboard Overview</h1>
+          <p className="text-xs text-gray-400 mt-1">Live inventory, catalog statistics, and product management</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/orders"
+            className="bg-[#1a1e27] hover:bg-[#232731] border border-[#2e3440] text-gray-200 text-xs px-4 py-2.5 rounded-lg transition-colors font-medium"
+          >
+            📦 View Orders
+          </Link>
+          <Link
+            href="/admin/products/new"
+            className="bg-[#c69e2a] hover:bg-[#d9b444] text-black text-xs font-semibold px-4 py-2.5 rounded-lg uppercase tracking-wider transition-colors shadow-lg shadow-[#c69e2a]/20"
+          >
+            + Add New Fragrance
+          </Link>
+        </div>
       </div>
 
-      {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
         <div className="bg-[#14161d] border border-[#232731] p-6 rounded-xl">
           <p className="text-xs uppercase tracking-wider text-gray-400">Total Fragrances</p>
           <p className="text-3xl font-serif text-[#d9b444] font-bold mt-2">{productCount}</p>
+        </div>
+
+        <div className="bg-[#14161d] border border-[#232731] p-6 rounded-xl">
+          <p className="text-xs uppercase tracking-wider text-gray-400">Total Orders</p>
+          <p className="text-3xl font-serif text-green-400 font-bold mt-2">{totalOrders}</p>
         </div>
 
         <div className="bg-[#14161d] border border-[#232731] p-6 rounded-xl">
@@ -46,7 +69,6 @@ export default async function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Products Inventory & Pricing Table */}
       <div className="bg-[#14161d] border border-[#232731] rounded-xl overflow-hidden shadow-xl">
         <div className="p-6 border-b border-[#232731] flex justify-between items-center">
           <h2 className="text-base font-serif text-white">Product Inventory & Pricing Matrix</h2>
@@ -63,6 +85,7 @@ export default async function AdminDashboardPage() {
                 <th className="py-4 px-6">Size / Flacon</th>
                 <th className="py-4 px-6">Price</th>
                 <th className="py-4 px-6">Stock Status</th>
+                <th className="py-4 px-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#232731]">
@@ -107,6 +130,9 @@ export default async function AdminDashboardPage() {
                         </span>
                       </p>
                     ))}
+                  </td>
+                  <td className="py-4 px-6 text-right">
+                    <DeleteProductButton productId={prod.id} productName={prod.name} />
                   </td>
                 </tr>
               ))}
