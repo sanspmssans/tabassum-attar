@@ -1,21 +1,27 @@
-export const dynamic = 'force-dynamic';
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import { Inter, Playfair_Display } from "next/font/google";
+import "./globals.css";
+import WhatsAppButton from "@/components/WhatsAppButton";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 
 export const metadata: Metadata = {
-  title: 'Tabassum Attar | Luxury Pure Non-Alcoholic Perfume Oils',
-  description: 'Pure aged Dehn Al Oudh, Royal Mukhallats, and Artisanal Attars handcrafted with rare natural ingredients.',
+  title: "Tabassum Attar | Artisanal Luxury Fragrances",
+  description: "Pure Hydro-Distillations & Artisanal Non-Alcoholic Perfumes",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="en">
-      <body className="bg-[#0b0c10] text-[#f5efe6] min-h-screen antialiased selection:bg-[#c69e2a] selection:text-black">
+      <body className={`${inter.variable} ${playfair.variable} font-sans bg-[#0b0c10] text-[#fbf8f2]`}>
         {children}
+        {/* Floating WhatsApp Button */}
+        <WhatsAppButton />
       </body>
     </html>
   );
