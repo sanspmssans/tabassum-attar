@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function CheckoutPage({
   searchParams,
 }: {
-  searchParams: { variantId?: string };
+  searchParams: { variantId?: string; coupon?: string };
 }) {
   const variant = searchParams.variantId
     ? await prisma.productVariant.findUnique({
@@ -29,6 +29,7 @@ export default async function CheckoutPage({
     const state = formData.get('state') as string;
     const pinCode = formData.get('pinCode') as string;
     const paymentMethod = formData.get('paymentMethod') as PaymentMethod;
+    const couponCode = (formData.get('couponCode') as string || '').trim().toUpperCase();
 
     const variantData = await prisma.productVariant.findUnique({
       where: { id: selectedVariantId },
@@ -40,9 +41,29 @@ export default async function CheckoutPage({
     }
 
     const unitPrice = Number(variantData.discountPrice || variantData.price);
-    const shippingCharge = unitPrice >= 999 ? 0 : 70;
+    
+    // Coupon Discount Calculation (10% for ROYAL10)
+    let discountAmount = 0;
+    if (couponCode === 'ROYAL10') {
+      discountAmount = Math.round(unitPrice * 0.10);
+    } else if (couponCode) {
+      try {
+        const coupon = await prisma.coupon.findFirst({
+          where: { code: { equals: couponCode, mode: 'insensitive' } },
+        });
+        if (coupon) {
+          const discountPercent = (coupon as any).discountPercent || (coupon as any).discount || 10;
+          discountAmount = Math.round((unitPrice * Number(discountPercent)) / 100);
+        }
+      } catch {
+        // Fallback if table query fails
+      }
+    }
+
+    const priceAfterDiscount = Math.max(0, unitPrice - discountAmount);
+    const shippingCharge = priceAfterDiscount >= 999 ? 0 : 70;
     const codCharge = paymentMethod === PaymentMethod.COD ? 50 : 0;
-    const grandTotal = unitPrice + shippingCharge + codCharge;
+    const grandTotal = priceAfterDiscount + shippingCharge + codCharge;
     const orderNumber = `TAB-${Date.now().toString().slice(-6)}`;
 
     // Create or find customer user
@@ -67,13 +88,13 @@ export default async function CheckoutPage({
       },
     });
 
-    // Create Order with Snapshot
+    // Create Order
     await prisma.order.create({
       data: {
         orderNumber,
         customerId: customer.id,
         orderStatus: OrderStatus.CONFIRMED,
-        subTotal: unitPrice,
+        subTotal: priceAfterDiscount,
         shippingCharge,
         codCharge,
         grandTotal,
@@ -99,9 +120,9 @@ export default async function CheckoutPage({
             productName: variantData.product.name,
             variantSize: variantData.labelSize,
             sku: variantData.sku,
-            unitPrice: unitPrice,
+            unitPrice: priceAfterDiscount,
             quantity: 1,
-            totalPrice: unitPrice,
+            totalPrice: priceAfterDiscount,
           },
         },
         payment: {
@@ -124,7 +145,7 @@ export default async function CheckoutPage({
             action: InventoryAction.ORDER_SALE,
             quantityDelta: -1,
             balanceAfter: (variant?.inventory?.stockQuantity ?? 1) - 1,
-            reason: `Order ${orderNumber}`,
+            reason: `Order ${orderNumber} (${couponCode ? `Coupon: ${couponCode}` : 'Regular'})`,
           },
         },
       },
@@ -192,6 +213,19 @@ export default async function CheckoutPage({
               </div>
             </div>
 
+            {/* Coupon Code Input */}
+            <div className="pt-2">
+              <label className="text-xs text-gray-400">Discount Coupon / Promo Code</label>
+              <input 
+                name="couponCode" 
+                placeholder="Enter coupon code (e.g. ROYAL10)" 
+                className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white uppercase outline-none focus:border-[#d9b444] mt-1" 
+              />
+              <p className="text-[11px] text-[#d9b444] mt-1">
+                ✨ Special Offer: Use code <strong className="font-bold underline">ROYAL10</strong> to get 10% instant discount!
+              </p>
+            </div>
+
             <h2 className="text-sm font-semibold uppercase tracking-wider text-[#d9b444] pt-4 border-t border-[#232731]">Payment Method</h2>
             
             <div className="space-y-2 text-xs">
@@ -239,6 +273,10 @@ export default async function CheckoutPage({
                     <span className="text-green-400">
                       {Number(variant.discountPrice || variant.price) >= 999 ? 'FREE' : '₹70'}
                     </span>
+                  </div>
+                  <div className="flex justify-between text-[#d9b444] text-[11px] pt-1">
+                    <span>Special Coupon (ROYAL10)</span>
+                    <span>10% OFF at checkout</span>
                   </div>
                 </div>
               </div>
