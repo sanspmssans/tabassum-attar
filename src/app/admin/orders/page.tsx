@@ -1,7 +1,5 @@
 import prisma from '@/lib/prisma';
 import Link from 'next/link';
-import { revalidatePath } from 'next/cache';
-import { OrderStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,126 +8,107 @@ export default async function AdminOrdersPage() {
     include: {
       orderItems: true,
       payment: true,
-      customer: {
-        include: {
-          user: true,
-        },
-      },
+      customer: { include: { user: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
 
-  async function updateOrderStatusAction(formData: FormData) {
-    'use server';
-    const orderId = formData.get('orderId') as string;
-    const newStatus = formData.get('orderStatus') as OrderStatus;
-
-    await prisma.order.update({
-      where: { id: orderId },
-      data: { orderStatus: newStatus },
-    });
-
-    revalidatePath('/admin/orders');
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl md:text-3xl font-serif text-white font-medium">Customer Orders</h1>
-          <p className="text-xs text-gray-400 mt-1">Real-time orders, dispatch details, and customer shipping addresses</p>
+          <p className="text-xs text-gray-400 mt-1">Manage dispatch, customer details & print shipping labels</p>
         </div>
-        <Link href="/admin" className="text-xs text-gray-400 hover:text-[#d9b444] border border-[#2e3440] px-3 py-1.5 rounded">
-          ← Back to Dashboard
-        </Link>
+        <span className="text-xs bg-[#232731] text-[#d9b444] px-3 py-1.5 rounded-lg border border-[#333a48]">
+          Total Orders: {orders.length}
+        </span>
       </div>
 
-      {orders.length === 0 ? (
-        <div className="bg-[#14161d] border border-[#232731] rounded-xl p-12 text-center text-gray-400 text-xs">
-          No orders placed yet. Place a test order from the store!
+      <div className="bg-[#14161d] border border-[#232731] rounded-xl overflow-hidden shadow-xl">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-gray-300">
+            <thead className="bg-[#1a1e27] text-gray-400 uppercase tracking-wider text-[11px] border-b border-[#232731]">
+              <tr>
+                <th className="py-4 px-6">Order ID & Date</th>
+                <th className="py-4 px-6">Customer Details</th>
+                <th className="py-4 px-6">Items Ordered</th>
+                <th className="py-4 px-6">Payment</th>
+                <th className="py-4 px-6">Total</th>
+                <th className="py-4 px-6 text-center">Shipping Label</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#232731]">
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-gray-500">
+                    No orders placed yet.
+                  </td>
+                </tr>
+              ) : (
+                orders.map((order) => {
+                  const snap = (order.shippingAddressSnapshot as any) || {};
+                  return (
+                    <tr key={order.id} className="hover:bg-[#161a22] transition-colors">
+                      <td className="py-4 px-6">
+                        <span className="font-mono text-white font-bold block">{order.orderNumber}</span>
+                        <span className="text-[10px] text-gray-500">
+                          {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </span>
+                      </td>
+
+                      <td className="py-4 px-6 space-y-0.5">
+                        <p className="font-semibold text-white">{snap.fullName || order.customer?.user?.name || 'Customer'}</p>
+                        <p className="text-[11px] text-[#d9b444]">📞 {snap.phoneNumber || order.customer?.user?.phoneNumber}</p>
+                        <p className="text-[10px] text-gray-400 truncate max-w-xs">{snap.city}, {snap.pinCode}</p>
+                      </td>
+
+                      <td className="py-4 px-6 space-y-1">
+                        {order.orderItems.map((item, idx) => (
+                          <div key={idx} className="text-[11px]">
+                            <span className="font-medium text-white">{item.productName}</span>{' '}
+                            <span className="text-gray-400">({item.variantSize} × {item.quantity})</span>
+                          </div>
+                        ))}
+                      </td>
+
+                      <td className="py-4 px-6">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          order.payment?.paymentMethod === 'COD'
+                            ? 'bg-amber-950/70 text-amber-400 border border-amber-800/60'
+                            : 'bg-green-950/70 text-green-400 border border-green-800/60'
+                        }`}>
+                          {order.payment?.paymentMethod || 'COD'}
+                        </span>
+                      </td>
+
+                      <td className="py-4 px-6">
+                        <span className="text-sm font-bold text-white font-mono">
+                          ₹{Number(order.grandTotal).toFixed(0)}
+                        </span>
+                      </td>
+
+                      <td className="py-4 px-6 text-center">
+                        <Link
+                          href={`/admin/orders/label?id=${order.id}`}
+                          target="_blank"
+                          className="inline-flex items-center gap-1.5 bg-[#c69e2a] hover:bg-[#d9b444] text-black font-bold px-3 py-1.5 rounded text-[11px] uppercase tracking-wider transition-colors shadow-sm"
+                        >
+                          🖨️ Print Label
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {orders.map((order) => {
-            const address = order.shippingAddressSnapshot as any;
-            return (
-              <div key={order.id} className="bg-[#14161d] border border-[#232731] rounded-xl p-6 space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-[#232731] pb-4">
-                  <div>
-                    <span className="font-mono text-sm font-bold text-[#d9b444]">{order.orderNumber}</span>
-                    <span className="text-[11px] text-gray-400 ml-3">
-                      {new Date(order.createdAt).toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  
-                  {/* Status Changer Form */}
-                  <form action={updateOrderStatusAction} className="flex items-center gap-2">
-                    <input type="hidden" name="orderId" value={order.id} />
-                    <select
-                      name="orderStatus"
-                      defaultValue={order.orderStatus}
-                      className="bg-[#0d0f12] border border-[#232731] text-xs text-[#d9b444] rounded px-2.5 py-1 outline-none"
-                    >
-                      <option value="PENDING">PENDING</option>
-                      <option value="CONFIRMED">CONFIRMED</option>
-                      <option value="DISPATCHED">DISPATCHED</option>
-                      <option value="DELIVERED">DELIVERED</option>
-                      <option value="CANCELLED">CANCELLED</option>
-                    </select>
-                    <button type="submit" className="bg-[#232731] hover:bg-[#2d3240] text-white text-[11px] px-3 py-1 rounded transition-colors">
-                      Update
-                    </button>
-                  </form>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
-                  {/* Items Ordered */}
-                  <div>
-                    <p className="text-gray-400 uppercase tracking-wider text-[10px] font-semibold mb-2">Ordered Fragrances</p>
-                    {order.orderItems.map((item) => (
-                      <div key={item.id} className="space-y-0.5">
-                        <p className="font-semibold text-white">{item.productName}</p>
-                        <p className="text-gray-400">{item.variantSize} × {item.quantity}</p>
-                        <p className="text-[#d9b444]">₹{item.totalPrice.toString()}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Shipping Address */}
-                  <div>
-                    <p className="text-gray-400 uppercase tracking-wider text-[10px] font-semibold mb-2">Customer Shipping Address</p>
-                    <p className="font-semibold text-white">{address?.fullName || order.customer.user.name}</p>
-                    <p className="text-gray-300 mt-1">{address?.address}</p>
-                    <p className="text-gray-300">{address?.city}, {address?.state} - {address?.pinCode}</p>
-                    <p className="text-[#d9b444] mt-1">📞 {address?.phoneNumber || order.customer.user.phoneNumber}</p>
-                  </div>
-
-                  {/* Payment Breakdown */}
-                  <div className="space-y-1">
-                    <p className="text-gray-400 uppercase tracking-wider text-[10px] font-semibold mb-2">Payment Summary</p>
-                    <div className="flex justify-between text-gray-400">
-                      <span>Method:</span>
-                      <span className="text-white font-medium">{order.payment?.paymentMethod}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-400">
-                      <span>Shipping:</span>
-                      <span>₹{order.shippingCharge.toString()}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-400">
-                      <span>COD Fee:</span>
-                      <span>₹{order.codCharge.toString()}</span>
-                    </div>
-                    <div className="flex justify-between text-white font-bold pt-2 border-t border-[#232731]">
-                      <span>Grand Total:</span>
-                      <span className="text-[#d9b444] text-sm">₹{order.grandTotal.toString()}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
