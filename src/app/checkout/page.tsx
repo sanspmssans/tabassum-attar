@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function CheckoutPage({
   searchParams,
 }: {
-  searchParams: { variantId?: string; coupon?: string };
+  searchParams: { variantId?: string };
 }) {
   const variant = searchParams.variantId
     ? await prisma.productVariant.findUnique({
@@ -21,19 +21,19 @@ export default async function CheckoutPage({
     'use server';
 
     const selectedVariantId = formData.get('variantId') as string;
-    const fullName = formData.get('fullName') as string;
-    const phoneNumber = formData.get('phoneNumber') as string;
-    const email = formData.get('email') as string;
-    const address = formData.get('address') as string;
-    const city = formData.get('city') as string;
-    const state = formData.get('state') as string;
-    const pinCode = formData.get('pinCode') as string;
-    const paymentMethod = formData.get('paymentMethod') as PaymentMethod;
-    const couponCode = (formData.get('couponCode') as string || '').trim().toUpperCase();
+    const fullName = (formData.get('fullName') as string) || 'Customer';
+    const phoneNumber = (formData.get('phoneNumber') as string || '').trim();
+    const email = (formData.get('email') as string || '').trim().toLowerCase();
+    const address = (formData.get('address') as string) || '';
+    const city = (formData.get('city') as string) || '';
+    const state = (formData.get('state') as string) || 'Kerala';
+    const pinCode = (formData.get('pinCode') as string) || '';
+    const paymentMethod = (formData.get('paymentMethod') as PaymentMethod) || PaymentMethod.COD;
+    const couponCode = ((formData.get('couponCode') as string) || '').trim().toUpperCase();
 
     const variantData = await prisma.productVariant.findUnique({
       where: { id: selectedVariantId },
-      include: { product: true },
+      include: { product: true, inventory: true },
     });
 
     if (!variantData) {
@@ -42,22 +42,10 @@ export default async function CheckoutPage({
 
     const unitPrice = Number(variantData.discountPrice || variantData.price);
     
-    // Coupon Discount Calculation (10% for ROYAL10)
+    // 10% Discount for ROYAL10
     let discountAmount = 0;
     if (couponCode === 'ROYAL10') {
       discountAmount = Math.round(unitPrice * 0.10);
-    } else if (couponCode) {
-      try {
-        const coupon = await prisma.coupon.findFirst({
-          where: { code: { equals: couponCode, mode: 'insensitive' } },
-        });
-        if (coupon) {
-          const discountPercent = (coupon as any).discountPercent || (coupon as any).discount || 10;
-          discountAmount = Math.round((unitPrice * Number(discountPercent)) / 100);
-        }
-      } catch {
-        // Fallback if table query fails
-      }
     }
 
     const priceAfterDiscount = Math.max(0, unitPrice - discountAmount);
@@ -66,17 +54,31 @@ export default async function CheckoutPage({
     const grandTotal = priceAfterDiscount + shippingCharge + codCharge;
     const orderNumber = `TAB-${Date.now().toString().slice(-6)}`;
 
-    // Create or find customer user
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: { name: fullName, phoneNumber },
-      create: {
-        name: fullName,
-        email,
-        phoneNumber,
-        passwordHash: 'GUEST_CHECKOUT',
+    // Safely find existing user by email or phoneNumber
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: email ? email : undefined },
+          { phoneNumber: phoneNumber ? phoneNumber : undefined },
+        ],
       },
     });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: fullName,
+          email: email || `guest_${Date.now()}@tabassumattar.com`,
+          phoneNumber: phoneNumber || null,
+          passwordHash: 'GUEST_CHECKOUT',
+        },
+      });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { name: fullName },
+      });
+    }
 
     const customer = await prisma.customer.upsert({
       where: { userId: user.id },
@@ -135,21 +137,27 @@ export default async function CheckoutPage({
       },
     });
 
-    // Update inventory
-    await prisma.inventory.update({
-      where: { variantId: variantData.id },
-      data: {
-        stockQuantity: { decrement: 1 },
-        transactions: {
-          create: {
-            action: InventoryAction.ORDER_SALE,
-            quantityDelta: -1,
-            balanceAfter: (variant?.inventory?.stockQuantity ?? 1) - 1,
-            reason: `Order ${orderNumber} (${couponCode ? `Coupon: ${couponCode}` : 'Regular'})`,
+    // Safe Inventory Update
+    try {
+      if (variantData.inventory) {
+        await prisma.inventory.update({
+          where: { id: variantData.inventory.id },
+          data: {
+            stockQuantity: { decrement: 1 },
+            transactions: {
+              create: {
+                action: InventoryAction.ORDER_SALE,
+                quantityDelta: -1,
+                balanceAfter: Math.max(0, variantData.inventory.stockQuantity - 1),
+                reason: `Order ${orderNumber}`,
+              },
+            },
           },
-        },
-      },
-    });
+        });
+      }
+    } catch (invErr) {
+      console.error('Inventory skipped:', invErr);
+    }
 
     redirect(`/checkout/success?orderNumber=${orderNumber}`);
   }
