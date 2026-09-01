@@ -30,7 +30,6 @@ export async function POST(req: Request) {
         where: { orderId: dbOrderId },
         data: {
           paymentStatus: PaymentStatus.CAPTURED,
-          transactionId: razorpay_payment_id,
         },
       });
 
