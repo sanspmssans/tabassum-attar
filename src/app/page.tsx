@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import Link from 'next/link';
 import Image from 'next/image';
+import MobileDrawer from '@/components/MobileDrawer';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,26 @@ export default async function HomePage({
     orderBy: { name: 'asc' },
   });
 
+  const navCategories = await prisma.category.findMany({
+    where: { parentId: null, isActive: true },
+    include: {
+      children: {
+        where: { isActive: true },
+        include: {
+          products: {
+            where: { isActive: true },
+            select: { id: true, name: true, slug: true },
+          },
+        },
+      },
+      products: {
+        where: { isActive: true },
+        select: { id: true, name: true, slug: true },
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
+
   return (
     <main className="min-h-screen bg-[#0b0c10] text-[#fbf8f2]">
       <div className="bg-[#c69e2a] text-black text-xs font-semibold py-2 px-4 text-center tracking-widest uppercase">
@@ -73,13 +94,18 @@ export default async function HomePage({
           <Link href="/" className="text-2xl font-serif tracking-widest text-[#d9b444] font-bold">
             TABASSUM ATTAR
           </Link>
-<nav className="hidden md:flex items-center gap-6">
+
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex items-center gap-6">
             <Link href="/" className="hover:text-[#d9b444] transition-colors">Home</Link>
             <Link href="#collection" className="hover:text-[#d9b444] transition-colors">Collection</Link>
             <Link href="/track" className="hover:text-[#d9b444] text-[#d9b444] font-medium transition-colors">
               🔍 Track Order
             </Link>
           </nav>
+
+          {/* Mobile Drawer (☰ Hamburger Menu) */}
+          <MobileDrawer categories={navCategories} />
         </div>
       </header>
 
