@@ -19,7 +19,7 @@ export async function createCheckoutOrder(formData: FormData) {
   const pinCode = ((formData.get('pinCode') as string) || '').trim();
   
   const paymentMethodRaw = formData.get('paymentMethod') as string;
-  const paymentMethod = paymentMethodRaw === 'UPI' ? PaymentMethod.ONLINE : PaymentMethod.COD;
+  const paymentMethod = paymentMethodRaw === 'UPI' ? PaymentMethod.UPI : PaymentMethod.COD;
 
   const couponCodeInput = ((formData.get('couponCode') as string) || '').trim().toUpperCase();
 
@@ -49,13 +49,13 @@ export async function createCheckoutOrder(formData: FormData) {
   }
 
   const priceAfterDiscount = Math.max(0, unitPrice - couponDiscount);
-  const shippingCharge = priceAfterDiscount >= 999 ? 0 : 0; // Free Shipping
+  const shippingCharge = 0; // Free Shipping
   const codCharge = 0;
   const grandTotal = priceAfterDiscount + shippingCharge + codCharge;
 
   const orderNumber = `TAB-${Date.now().toString().slice(-6)}`;
 
-  // 3. User Lookup or Create (Original Schema Flow)
+  // 3. User Lookup or Create
   let user = await (prisma.user.findFirst as any)({
     where: {
       OR: [
@@ -167,5 +167,4 @@ export async function createCheckoutOrder(formData: FormData) {
   redirect(`/checkout/success?orderId=${dbOrder.orderNumber}`);
 }
 
-// Export under processOrder as well to prevent import mismatches
 export const processOrder = createCheckoutOrder;
