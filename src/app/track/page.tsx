@@ -14,21 +14,28 @@ export default async function TrackPage({
   let order: any = null;
 
   if (query) {
-    const cleanQuery = query.replace('#', '');
+    const cleanQuery = query.replace('#', '').trim();
 
-    order = await (prisma.order.findFirst as any)({
-      where: {
-        OR: [
-          { orderNumber: cleanQuery },
-          { id: cleanQuery },
-          { customer: { phone: cleanQuery } },
-        ],
-      },
-      include: {
-        orderItems: true,
-        shipping: true,
-      },
-    }).catch(() => null);
+    try {
+      order = await (prisma.order.findFirst as any)({
+        where: {
+          OR: [
+            { orderNumber: cleanQuery },
+            { orderNumber: { equals: cleanQuery, mode: 'insensitive' } },
+            { id: cleanQuery },
+          ],
+        },
+        include: {
+          orderItems: true,
+          shipping: true,
+        },
+      });
+    } catch {
+      order = await (prisma.order.findFirst as any)({
+        where: { orderNumber: cleanQuery },
+        include: { shipping: true, orderItems: true },
+      }).catch(() => null);
+    }
   }
 
   const getStepNumber = (status: string) => {
@@ -53,7 +60,7 @@ export default async function TrackPage({
           </Link>
           <h2 className="text-2xl font-serif font-bold text-white">Track Your Order</h2>
           <p className="text-xs text-gray-400">
-            Enter your Order ID (e.g. #ORD-12345) or Phone Number
+            Enter your Order ID (e.g. TAB-214340)
           </p>
         </div>
 
@@ -62,7 +69,7 @@ export default async function TrackPage({
             type="text"
             name="q"
             defaultValue={query}
-            placeholder="Enter Order ID or Mobile..."
+            placeholder="Enter Order ID (e.g. TAB-214340)..."
             required
             className="flex-1 bg-[#14161d] border border-[#232731] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-500 focus:border-[#d9b444] outline-none"
           />
@@ -80,7 +87,7 @@ export default async function TrackPage({
               <>
                 <div className="flex items-center justify-between border-b border-[#232731] pb-4">
                   <div>
-                    <span className="text-[10px] uppercase text-gray-400">Order Number</span>
+                    <span className="text-[10px] uppercase text-gray-400">Order Reference</span>
                     <p className="text-base font-mono font-bold text-[#d9b444]">
                       #{order.orderNumber}
                     </p>
@@ -97,7 +104,7 @@ export default async function TrackPage({
                 <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-medium pt-2">
                   <div className={`space-y-1 ${currentStep >= 1 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
                     <div className={`h-1.5 rounded-full ${currentStep >= 1 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
-                    <span>Order Placed</span>
+                    <span>Placed</span>
                   </div>
                   <div className={`space-y-1 ${currentStep >= 2 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
                     <div className={`h-1.5 rounded-full ${currentStep >= 2 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
@@ -113,23 +120,24 @@ export default async function TrackPage({
                   </div>
                 </div>
 
+                {/* Tracking Details */}
                 {order.shipping?.trackingNumber && (
                   <div className="bg-[#0e1015] border border-[#2e3440] rounded-xl p-4 space-y-1">
                     <span className="text-[10px] uppercase tracking-wider text-gray-400">
-                      Tracking Consignment
+                      Courier Consignment
                     </span>
                     <p className="text-xs text-white">
                       Tracking No: <span className="font-mono font-bold text-[#d9b444]">{order.shipping.trackingNumber}</span>
                     </p>
-                    {order.shipping.carrier && (
-                      <p className="text-[11px] text-gray-400">Via: {order.shipping.carrier}</p>
+                    {order.shipping.courierName && (
+                      <p className="text-[11px] text-gray-400">Via: {order.shipping.courierName}</p>
                     )}
                   </div>
                 )}
               </>
             ) : (
               <div className="text-center py-6 text-gray-400 text-xs">
-                No order found for &quot;{query}&quot;. Please verify the details.
+                No order found for &quot;{query}&quot;. Please verify your Order ID.
               </div>
             )}
           </div>

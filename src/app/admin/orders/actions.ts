@@ -3,7 +3,7 @@
 import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
-// Function to update order fulfillment status (uses orderStatus)
+// Update order status
 export async function updateOrderStatus(formData: FormData) {
   const orderId = formData.get('orderId') as string;
   const status = formData.get('status') as string;
@@ -14,7 +14,7 @@ export async function updateOrderStatus(formData: FormData) {
     await (prisma.order.update as any)({
       where: { id: orderId },
       data: {
-        orderStatus: status, // Prisma Schema field: orderStatus
+        orderStatus: status,
       },
     });
 
@@ -25,43 +25,40 @@ export async function updateOrderStatus(formData: FormData) {
   }
 }
 
-// Function to update shipment tracking number
+// Update tracking number & courier details (Exact Schema Match)
 export async function updateTrackingInfo(formData: FormData) {
   const orderId = formData.get('orderId') as string;
   const trackingNumber = (formData.get('trackingNumber') as string)?.trim();
-  const courierName = (formData.get('courierName') as string)?.trim();
+  const courierName = (formData.get('courierName') as string)?.trim() || 'DTDC / Speed Post';
 
-  if (!orderId) return;
+  if (!orderId || !trackingNumber) return;
 
   try {
-    // 1. Update status to SHIPPED if tracking is provided
-    if (trackingNumber) {
-      await (prisma.order.update as any)({
-        where: { id: orderId },
-        data: { orderStatus: 'SHIPPED' },
-      });
-    }
+    // 1. Mark order as SHIPPED
+    await (prisma.order.update as any)({
+      where: { id: orderId },
+      data: { orderStatus: 'SHIPPED' },
+    });
 
-    // 2. Save tracking to Shipping model if exists
-    if ((prisma as any).shipping) {
-      await (prisma as any).shipping.upsert({
-        where: { orderId },
-        create: {
-          orderId,
-          trackingNumber: trackingNumber || '',
-          carrier: courierName || 'Courier',
-          status: 'SHIPPED',
-        },
-        update: {
-          trackingNumber: trackingNumber || '',
-          carrier: courierName || 'Courier',
-        },
-      }).catch(() => null);
-    }
+    // 2. Save directly to Shipping table
+    await (prisma.shipping.upsert as any)({
+      where: { orderId },
+      create: {
+        orderId,
+        trackingNumber,
+        courierName,
+        shippedAt: new Date(),
+      },
+      update: {
+        trackingNumber,
+        courierName,
+        shippedAt: new Date(),
+      },
+    });
 
     revalidatePath('/admin/orders');
     revalidatePath('/track');
   } catch (error) {
-    console.error('Failed to update tracking info:', error);
+    console.error('Failed to save tracking:', error);
   }
 }
