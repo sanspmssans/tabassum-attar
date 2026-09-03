@@ -2,7 +2,7 @@ import prisma from '@/lib/prisma';
 import Link from 'next/link';
 import Image from 'next/image';
 import MobileDrawer from '@/components/MobileDrawer';
-
+import DesktopNav from '@/components/DesktopNav';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage({
@@ -95,14 +95,8 @@ export default async function HomePage({
             TABASSUM ATTAR
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/" className="hover:text-[#d9b444] transition-colors">Home</Link>
-            <Link href="#collection" className="hover:text-[#d9b444] transition-colors">Collection</Link>
-            <Link href="/track" className="hover:text-[#d9b444] text-[#d9b444] font-medium transition-colors">
-              🔍 Track Order
-            </Link>
-          </nav>
+         {/* Desktop Navigation */}
+<DesktopNav categories={navCategories} />
 
           {/* Mobile Drawer (☰ Hamburger Menu) */}
           <MobileDrawer categories={navCategories} />
