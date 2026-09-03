@@ -10,6 +10,7 @@ export default async function AdminOrdersPage() {
       customer: true,
       orderItems: true,
       shipping: true,
+      payment: true,
     },
     orderBy: { createdAt: 'desc' },
   }).catch(() => []);
@@ -89,7 +90,7 @@ export default async function AdminOrdersPage() {
                 orders.map((order: any) => {
                   const items: any[] = order.orderItems || [];
 
-                  // Address snapshot parsing
+                  // Address snapshot parsing using exact keys: phoneNumber, pinCode
                   const snapshot =
                     typeof order.shippingAddressSnapshot === 'string'
                       ? JSON.parse(order.shippingAddressSnapshot)
@@ -97,33 +98,39 @@ export default async function AdminOrdersPage() {
 
                   const customerName =
                     snapshot.fullName ||
-                    snapshot.name ||
                     order.customer?.name ||
                     'Customer';
 
                   const customerPhone =
+                    snapshot.phoneNumber ||
                     snapshot.phone ||
-                    snapshot.mobile ||
                     order.customer?.phone ||
                     '';
 
-                  const addressText =
-                    snapshot.address ||
-                    [snapshot.street, snapshot.city, snapshot.state, snapshot.pincode]
-                      .filter(Boolean)
-                      .join(', ') ||
-                    'Address in record';
+                  const addressParts = [
+                    snapshot.address,
+                    snapshot.city,
+                    snapshot.state,
+                    snapshot.pinCode,
+                  ].filter(Boolean);
+
+                  const addressText = addressParts.length > 0
+                    ? addressParts.join(', ')
+                    : 'Address in record';
 
                   const trackingNo = order.shipping?.trackingNumber || '';
-                  const courier = order.shipping?.carrier || '';
-
+                  const courier = order.shipping?.courierName || '';
                   const currentStatus = order.orderStatus || 'PENDING';
+
+                  // Clean phone for WhatsApp URL
+                  const rawPhone = customerPhone.replace(/[^0-9]/g, '');
+                  const waPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
 
                   const waMessage = encodeURIComponent(
                     `Hello ${customerName},\n\nYour order #${order.orderNumber} from Tabassum Attar is now: ${currentStatus}.\n${
                       trackingNo
-                        ? `Tracking No: ${trackingNo} (${courier || 'Courier'})\nTrack here: https://tabassum-attar.vercel.app/track`
-                        : ''
+                        ? `Tracking No: ${trackingNo} (${courier || 'Speed Post / Courier'})\nTrack here: https://tabassum-attar.vercel.app/track?orderId=${order.orderNumber}`
+                        : `Track here: https://tabassum-attar.vercel.app/track?orderId=${order.orderNumber}`
                     }\n\nThank you for choosing Tabassum Attar!`
                   );
 
@@ -139,8 +146,10 @@ export default async function AdminOrdersPage() {
                       {/* Customer Details */}
                       <td className="py-4 px-4 min-w-[200px]">
                         <p className="font-semibold text-white text-xs">{customerName}</p>
-                        <p className="text-[11px] text-gray-400">{customerPhone || 'No Phone'}</p>
-                        <p className="text-[10px] text-gray-500 mt-1 leading-relaxed line-clamp-2">
+                        <p className="text-[11px] text-[#d9b444] font-mono mt-0.5">
+                          {customerPhone ? `📞 ${customerPhone}` : 'No Phone'}
+                        </p>
+                        <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
                           {addressText}
                         </p>
                       </td>
@@ -170,7 +179,7 @@ export default async function AdminOrdersPage() {
                           ₹{Number(order.grandTotal || 0).toLocaleString('en-IN')}
                         </span>
                         <span className="block text-[10px] text-gray-500 uppercase">
-                          COD / UPI
+                          {order.payment?.paymentMethod || 'COD'}
                         </span>
                       </td>
 
@@ -237,9 +246,9 @@ export default async function AdminOrdersPage() {
                             🖨️ Print Label
                           </Link>
 
-                          {customerPhone ? (
+                          {waPhone ? (
                             <a
-                              href={`https://wa.me/${customerPhone.replace(/[^0-9]/g, '')}?text=${waMessage}`}
+                              href={`https://wa.me/${waPhone}?text=${waMessage}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 hover:bg-[#25D366] hover:text-black px-2.5 py-1 rounded text-[10px] font-medium transition-all"
