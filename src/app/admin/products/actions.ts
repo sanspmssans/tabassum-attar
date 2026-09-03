@@ -35,56 +35,8 @@ export async function createProduct(formData: FormData) {
     slug = `${slug}-${Date.now().toString().slice(-4)}`;
   }
 
-  // Parse Bottle Sizes (Variants)
-  const variantsData = [];
-
-  // 3ml Variant
-  const price3ml = formData.get('price_3ml') as string;
-  if (price3ml && Number(price3ml) > 0) {
-    const discount3ml = formData.get('discount_3ml') as string;
-    const stock3ml = formData.get('stock_3ml') as string;
-    variantsData.push({
-      size: '3ml (1/4 Tola)',
-      price: parseFloat(price3ml),
-      discountPrice: discount3ml ? parseFloat(discount3ml) : null,
-      stock: stock3ml ? parseInt(stock3ml) : 50,
-    });
-  }
-
-  // 6ml Variant
-  const price6ml = formData.get('price_6ml') as string;
-  if (price6ml && Number(price6ml) > 0) {
-    const discount6ml = formData.get('discount_6ml') as string;
-    const stock6ml = formData.get('stock_6ml') as string;
-    variantsData.push({
-      size: '6ml (1/2 Tola)',
-      price: parseFloat(price6ml),
-      discountPrice: discount6ml ? parseFloat(discount6ml) : null,
-      stock: stock6ml ? parseInt(stock6ml) : 50,
-    });
-  }
-
-  // 12ml Variant
-  const price12ml = formData.get('price_12ml') as string;
-  if (price12ml && Number(price12ml) > 0) {
-    const discount12ml = formData.get('discount_12ml') as string;
-    const stock12ml = formData.get('stock_12ml') as string;
-    variantsData.push({
-      size: '12ml (1 Tola)',
-      price: parseFloat(price12ml),
-      discountPrice: discount12ml ? parseFloat(discount12ml) : null,
-      stock: stock12ml ? parseInt(stock12ml) : 50,
-    });
-  }
-
-  // Notes structure
-  const notesData = [];
-  if (topNotes) notesData.push({ type: 'TOP', note: topNotes, orderIndex: 1 });
-  if (heartNotes) notesData.push({ type: 'HEART', note: heartNotes, orderIndex: 2 });
-  if (baseNotes) notesData.push({ type: 'BASE', note: baseNotes, orderIndex: 3 });
-
-  // Database Creation
-  await prisma.product.create({
+  // 1. Create Product First
+  const newProduct = await prisma.product.create({
     data: {
       name,
       slug,
@@ -94,23 +46,87 @@ export async function createProduct(formData: FormData) {
       gender: gender as any,
       isActive: true,
       categoryId,
-      images: imageUrl
+      ...(imageUrl
         ? {
-            create: [{ url: imageUrl }],
+            images: {
+              create: [{ url: imageUrl }],
+            },
           }
-        : undefined,
-      variants: {
-        create: variantsData.length > 0 ? variantsData : [
-          { size: '6ml (1/2 Tola)', price: 999, discountPrice: null, stock: 25 }
-        ],
-      },
-      notes: notesData.length > 0
-        ? {
-            create: notesData,
-          }
-        : undefined,
+        : {}),
     },
   });
+
+  // 2. Prepare Variants (Bottle Sizes)
+  const variantsToCreate: any[] = [];
+
+  const price3ml = formData.get('price_3ml') as string;
+  if (price3ml && Number(price3ml) > 0) {
+    const discount3ml = formData.get('discount_3ml') as string;
+    const stock3ml = formData.get('stock_3ml') as string;
+    variantsToCreate.push({
+      productId: newProduct.id,
+      size: '3ml (1/4 Tola)',
+      price: parseFloat(price3ml),
+      discountPrice: discount3ml ? parseFloat(discount3ml) : null,
+      stock: stock3ml ? parseInt(stock3ml) : 50,
+    });
+  }
+
+  const price6ml = formData.get('price_6ml') as string;
+  if (price6ml && Number(price6ml) > 0) {
+    const discount6ml = formData.get('discount_6ml') as string;
+    const stock6ml = formData.get('stock_6ml') as string;
+    variantsToCreate.push({
+      productId: newProduct.id,
+      size: '6ml (1/2 Tola)',
+      price: parseFloat(price6ml),
+      discountPrice: discount6ml ? parseFloat(discount6ml) : null,
+      stock: stock6ml ? parseInt(stock6ml) : 50,
+    });
+  }
+
+  const price12ml = formData.get('price_12ml') as string;
+  if (price12ml && Number(price12ml) > 0) {
+    const discount12ml = formData.get('discount_12ml') as string;
+    const stock12ml = formData.get('stock_12ml') as string;
+    variantsToCreate.push({
+      productId: newProduct.id,
+      size: '12ml (1 Tola)',
+      price: parseFloat(price12ml),
+      discountPrice: discount12ml ? parseFloat(discount12ml) : null,
+      stock: stock12ml ? parseInt(stock12ml) : 50,
+    });
+  }
+
+  // Default fallback if no size was filled
+  if (variantsToCreate.length === 0) {
+    variantsToCreate.push({
+      productId: newProduct.id,
+      size: '6ml (1/2 Tola)',
+      price: 999,
+      discountPrice: null,
+      stock: 25,
+    });
+  }
+
+  // Insert variants
+  for (const v of variantsToCreate) {
+    await prisma.variant.create({
+      data: v,
+    });
+  }
+
+  // 3. Insert Olfactory Notes (Pyramid)
+  const notesToCreate = [];
+  if (topNotes) notesToCreate.push({ productId: newProduct.id, type: 'TOP' as any, note: topNotes, orderIndex: 1 });
+  if (heartNotes) notesToCreate.push({ productId: newProduct.id, type: 'HEART' as any, note: heartNotes, orderIndex: 2 });
+  if (baseNotes) notesToCreate.push({ productId: newProduct.id, type: 'BASE' as any, note: baseNotes, orderIndex: 3 });
+
+  for (const n of notesToCreate) {
+    await (prisma as any).fragranceNote?.create({
+      data: n,
+    }).catch(() => null);
+  }
 
   revalidatePath('/');
   revalidatePath('/admin/products');
@@ -139,10 +155,9 @@ export async function deleteProduct(formData: FormData) {
   if (!id) return;
 
   try {
-    // Delete relations first
     await prisma.variant.deleteMany({ where: { productId: id } });
     await prisma.productImage.deleteMany({ where: { productId: id } }).catch(() => null);
-    await prisma.fragranceNote.deleteMany({ where: { productId: id } }).catch(() => null);
+    await (prisma as any).fragranceNote?.deleteMany({ where: { productId: id } }).catch(() => null);
 
     await prisma.product.delete({ where: { id } });
 
