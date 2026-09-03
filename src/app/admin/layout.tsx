@@ -17,18 +17,19 @@ export default async function AdminLayout({
   async function handleAdminLogin(formData: FormData) {
     'use server';
 
-    const email = (formData.get('email') as string || '').trim().toLowerCase();
-    const password = (formData.get('password') as string || '').trim();
+    const email = ((formData.get('email') as string) || '').trim().toLowerCase();
+    const password = ((formData.get('password') as string) || '').trim();
 
     // Default Admin Credentials & DB Verification
-    const isMasterAdmin = 
-      (email === 'admin@tabassumattar.com' || email === 'admin@tabassum.com') && 
+    const isMasterAdmin =
+      (email === 'admin@tabassumattar.com' || email === 'admin@tabassum.com') &&
       (password === 'admin123' || password === 'tabassum123' || password === 'Admin@123');
 
-    // Or check in Prisma database
-    const dbAdmin = await prisma.user.findFirst({
-      where: { email, role: 'SUPER_ADMIN' as any },
-    }).catch(() => null);
+    const dbAdmin = await prisma.user
+      .findFirst({
+        where: { email, role: 'SUPER_ADMIN' as any },
+      })
+      .catch(() => null);
 
     if (isMasterAdmin || dbAdmin) {
       cookies().set('tabassum_admin_auth', 'true', {
@@ -50,7 +51,7 @@ export default async function AdminLayout({
     redirect('/admin');
   }
 
-  // If NOT Authenticated, show Luxury Admin Login Screen
+  // If NOT Authenticated, show Login Screen
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#0b0c10] text-[#f5efe6] flex items-center justify-center p-6">
@@ -87,7 +88,7 @@ export default async function AdminLayout({
                 required
                 type="password"
                 name="password"
-                placeholder="Enter password (e.g. admin123)"
+                placeholder="Enter password"
                 className="w-full bg-[#0d0f12] border border-[#232731] rounded-lg p-3 text-xs text-white outline-none focus:border-[#d9b444]"
               />
             </div>
@@ -110,7 +111,7 @@ export default async function AdminLayout({
     );
   }
 
-  // If Authenticated, show full Admin Sidebar & Dashboard
+  // If Authenticated, show Sidebar & Dashboard
   return (
     <div className="min-h-screen bg-[#0d0f12] text-[#f5efe6] flex flex-col md:flex-row">
       {/* Sidebar Navigation */}
@@ -130,23 +131,35 @@ export default async function AdminLayout({
             >
               📊 Overview & Stats
             </Link>
+            
+            {/* Categories Link */}
             <Link
-              href="/"
+              href="/admin/categories"
               className="block px-4 py-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1e27] transition-colors"
             >
-              🌐 View Live Store
+              📁 Manage Categories
             </Link>
+
             <Link
               href="/admin/products/new"
               className="block px-4 py-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1e27] transition-colors"
             >
               ➕ Add New Fragrance
             </Link>
+
             <Link
               href="/admin/orders"
               className="block px-4 py-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1e27] transition-colors"
             >
               📦 Customer Orders
+            </Link>
+
+            <Link
+              href="/"
+              target="_blank"
+              className="block px-4 py-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1e27] transition-colors"
+            >
+              🌐 View Live Store
             </Link>
           </nav>
         </div>
@@ -158,7 +171,7 @@ export default async function AdminLayout({
           <form action={handleAdminLogout}>
             <button
               type="submit"
-              className="w-full py-2 px-3 rounded-lg bg-red-950/40 text-red-400 border border-red-800/40 hover:bg-red-900/50 text-[11px] font-semibold transition-colors text-center"
+              className="w-full py-2 px-3 rounded-lg bg-red-950/40 text-red-400 border border-red-800/40 hover:bg-red-900/50 text-[11px] font-semibold transition-colors text-center cursor-pointer"
             >
               🚪 Sign Out (Logout)
             </button>
