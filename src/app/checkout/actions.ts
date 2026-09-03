@@ -1,11 +1,15 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import Razorpay from 'razorpay';
+import { PaymentMethod, PaymentStatus, OrderStatus, InventoryAction } from '@prisma/client';
 import { redirect } from 'next/navigation';
-import { OrderStatus, PaymentMethod, PaymentStatus } from '@prisma/client';
 
-export async function processOrder(formData: FormData) {
-  const selectedVariantId = (formData.get('variantId') as string) || (formData.get('selectedVariantId') as string);
+export async function createCheckoutOrder(formData: FormData) {
+  const selectedVariantId =
+    (formData.get('variantId') as string) ||
+    (formData.get('selectedVariantId') as string);
+
   const fullName = ((formData.get('fullName') as string) || 'Customer').trim();
   const phoneNumber = ((formData.get('phoneNumber') as string) || '').trim();
   const email = ((formData.get('email') as string) || '').trim().toLowerCase();
@@ -13,49 +17,50 @@ export async function processOrder(formData: FormData) {
   const city = ((formData.get('city') as string) || '').trim();
   const state = ((formData.get('state') as string) || 'Kerala').trim();
   const pinCode = ((formData.get('pinCode') as string) || '').trim();
-  const paymentMethodInput = (formData.get('paymentMethod') as string) || 'COD';
+  
+  const paymentMethodRaw = formData.get('paymentMethod') as string;
+  const paymentMethod = paymentMethodRaw === 'UPI' ? PaymentMethod.ONLINE : PaymentMethod.COD;
+
   const couponCodeInput = ((formData.get('couponCode') as string) || '').trim().toUpperCase();
 
   if (!selectedVariantId || !fullName || !phoneNumber || !address || !pinCode) {
     throw new Error('Please fill in all required delivery details.');
   }
 
-  // 1. Fetch Product Variant Details
+  // 1. Fetch Variant with Inventory and Product details
   const variantData = await (prisma.productVariant.findUnique as any)({
     where: { id: selectedVariantId },
-    include: { product: true },
+    include: { product: true, inventory: true },
   });
 
   if (!variantData) {
     throw new Error('Selected perfume size not found.');
   }
 
-  // 2. Pricing & Coupon Calculation
+  // 2. Pricing & ROYAL10 Coupon Calculation
   const unitPrice = Number(variantData.discountPrice || variantData.price || 0);
 
   let couponCode: string | null = null;
   let couponDiscount = 0;
 
-  // ROYAL10 Coupon (10% Discount)
   if (couponCodeInput === 'ROYAL10') {
     couponCode = 'ROYAL10';
     couponDiscount = Math.round((unitPrice * 10) / 100);
   }
 
   const priceAfterDiscount = Math.max(0, unitPrice - couponDiscount);
-  const shippingCharge = 0; // Free Shipping
+  const shippingCharge = priceAfterDiscount >= 999 ? 0 : 0; // Free Shipping
   const codCharge = 0;
   const grandTotal = priceAfterDiscount + shippingCharge + codCharge;
 
-  // Unique Order Number
   const orderNumber = `TAB-${Date.now().toString().slice(-6)}`;
 
-  // 3. User Lookup or Create
+  // 3. User Lookup or Create (Original Schema Flow)
   let user = await (prisma.user.findFirst as any)({
     where: {
       OR: [
-        { email: email ? email : undefined },
-        { phoneNumber: phoneNumber ? phoneNumber : undefined },
+        ...(email ? [{ email }] : []),
+        ...(phoneNumber ? [{ phoneNumber }] : []),
       ],
     },
   });
@@ -76,26 +81,17 @@ export async function processOrder(formData: FormData) {
     });
   }
 
-  // 4. Customer Lookup or Create Linked to User
-  let customer = await (prisma.customer.findUnique as any)({
+  // 4. Customer Lookup or Upsert using userId
+  const customer = await (prisma.customer.upsert as any)({
     where: { userId: user.id },
+    update: {},
+    create: {
+      userId: user.id,
+    },
   });
 
-  if (!customer) {
-    customer = await (prisma.customer.create as any)({
-      data: {
-        userId: user.id,
-      },
-    });
-  }
-
-  // Determine Payment Method
-  const isCOD = paymentMethodInput === 'COD';
-  const paymentMethod = isCOD ? PaymentMethod.COD : PaymentMethod.ONLINE;
-  const paymentStatus = PaymentStatus.PENDING;
-
-  // 5. Create DB Order
-  const dbOrder = await (prisma.order.create as any)({
+  // 5. Create Order in Database
+  const dbOrder = await prisma.order.create({
     data: {
       orderNumber,
       customerId: customer.id,
@@ -132,22 +128,44 @@ export async function processOrder(formData: FormData) {
           sku: variantData.sku || '',
           unitPrice: unitPrice,
           quantity: 1,
-          totalPrice: unitPrice,
+          totalPrice: priceAfterDiscount,
         },
       },
       payment: {
         create: {
           paymentMethod: paymentMethod,
-          paymentStatus: paymentStatus,
+          paymentStatus: PaymentStatus.PENDING,
           amount: grandTotal,
         },
       },
     },
   });
 
-  // 6. Redirect to Order Success Screen
+  // 6. Inventory Decrement Update
+  try {
+    if (variantData.inventory) {
+      await (prisma.inventory.update as any)({
+        where: { id: variantData.inventory.id },
+        data: {
+          stockQuantity: { decrement: 1 },
+          transactions: {
+            create: {
+              action: InventoryAction.ORDER_SALE,
+              quantityDelta: -1,
+              balanceAfter: Math.max(0, (variantData.inventory.stockQuantity || 1) - 1),
+              reason: `Order ${orderNumber}`,
+            },
+          },
+        },
+      });
+    }
+  } catch (invErr) {
+    console.error('Inventory skipped:', invErr);
+  }
+
+  // 7. Redirect to Success Page
   redirect(`/checkout/success?orderId=${dbOrder.orderNumber}`);
 }
 
-// Export under both names to guarantee compatibility with CheckoutForm
-export const createCheckoutOrder = processOrder;
+// Export under processOrder as well to prevent import mismatches
+export const processOrder = createCheckoutOrder;
