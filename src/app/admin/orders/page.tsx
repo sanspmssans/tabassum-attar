@@ -5,42 +5,20 @@ import { updateOrderStatus, updateTrackingInfo } from './actions';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminOrdersPage() {
-  // Fetch orders with smart fallback to prevent empty state on relation mismatch
-  let orders: any[] = [];
+  const orders: any[] = await (prisma.order.findMany as any)({
+    include: {
+      customer: true,
+      orderItems: true,
+      shipping: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  }).catch(() => []);
 
-  try {
-    orders = await (prisma.order.findMany as any)({
-      include: {
-        items: {
-          include: {
-            product: true,
-            variant: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-  } catch {
-    try {
-      orders = await (prisma.order.findMany as any)({
-        include: {
-          orderItems: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-    } catch {
-      orders = await prisma.order.findMany({
-        orderBy: { createdAt: 'desc' },
-      }).catch(() => []);
-    }
-  }
-
-  // Summary Metrics
   const totalOrders = orders.length;
-  const pendingOrders = orders.filter((o: any) => o.status === 'PENDING').length;
-  const shippedOrders = orders.filter((o: any) => o.status === 'SHIPPED').length;
+  const pendingOrders = orders.filter((o: any) => o.orderStatus === 'PENDING').length;
+  const shippedOrders = orders.filter((o: any) => o.orderStatus === 'SHIPPED').length;
   const totalRevenue = orders.reduce(
-    (sum: number, o: any) => sum + Number(o.totalAmount || o.total || 0),
+    (sum: number, o: any) => sum + Number(o.grandTotal || o.subTotal || 0),
     0
   );
 
@@ -97,7 +75,7 @@ export default async function AdminOrdersPage() {
           <table className="w-full text-left text-xs text-gray-300">
             <thead className="bg-[#0e1015] border-b border-[#232731] text-[10px] uppercase tracking-wider text-gray-400">
               <tr>
-                <th className="py-4 px-4">Order ID & Date</th>
+                <th className="py-4 px-4">Order ID</th>
                 <th className="py-4 px-4">Customer & Contact</th>
                 <th className="py-4 px-4">Fragrances Ordered</th>
                 <th className="py-4 px-4">Total Amount</th>
@@ -109,37 +87,61 @@ export default async function AdminOrdersPage() {
             <tbody className="divide-y divide-[#1f222b]">
               {orders.length > 0 ? (
                 orders.map((order: any) => {
-                  const items: any[] = order.items || order.orderItems || [];
-                  const orderDate = new Date(order.createdAt).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  });
+                  const items: any[] = order.orderItems || [];
+
+                  // Address snapshot parsing
+                  const snapshot =
+                    typeof order.shippingAddressSnapshot === 'string'
+                      ? JSON.parse(order.shippingAddressSnapshot)
+                      : order.shippingAddressSnapshot || {};
+
+                  const customerName =
+                    snapshot.fullName ||
+                    snapshot.name ||
+                    order.customer?.name ||
+                    'Customer';
+
+                  const customerPhone =
+                    snapshot.phone ||
+                    snapshot.mobile ||
+                    order.customer?.phone ||
+                    '';
+
+                  const addressText =
+                    snapshot.address ||
+                    [snapshot.street, snapshot.city, snapshot.state, snapshot.pincode]
+                      .filter(Boolean)
+                      .join(', ') ||
+                    'Address in record';
+
+                  const trackingNo = order.shipping?.trackingNumber || '';
+                  const courier = order.shipping?.carrier || '';
+
+                  const currentStatus = order.orderStatus || 'PENDING';
 
                   const waMessage = encodeURIComponent(
-                    `Hello ${order.customerName || 'Customer'},\n\nYour order #${order.orderNumber || order.id.slice(-6).toUpperCase()} from Tabassum Attar has been updated to: ${order.status}.\n${
-                      order.trackingNumber
-                        ? `Tracking No: ${order.trackingNumber} (${order.courierName || 'Courier'})\nTrack here: https://tabassum-attar.vercel.app/track`
+                    `Hello ${customerName},\n\nYour order #${order.orderNumber} from Tabassum Attar is now: ${currentStatus}.\n${
+                      trackingNo
+                        ? `Tracking No: ${trackingNo} (${courier || 'Courier'})\nTrack here: https://tabassum-attar.vercel.app/track`
                         : ''
                     }\n\nThank you for choosing Tabassum Attar!`
                   );
 
                   return (
                     <tr key={order.id} className="hover:bg-[#1a1e27] transition-colors align-top">
-                      {/* Order Info */}
+                      {/* Order Number */}
                       <td className="py-4 px-4 whitespace-nowrap">
                         <span className="font-mono font-bold text-[#d9b444] text-xs block">
-                          #{order.orderNumber || order.id.slice(-8).toUpperCase()}
+                          #{order.orderNumber}
                         </span>
-                        <span className="text-[10px] text-gray-500">{orderDate}</span>
                       </td>
 
                       {/* Customer Details */}
                       <td className="py-4 px-4 min-w-[200px]">
-                        <p className="font-semibold text-white text-xs">{order.customerName || 'Customer'}</p>
-                        <p className="text-[11px] text-gray-400">{order.customerPhone || order.phone || 'No Phone'}</p>
+                        <p className="font-semibold text-white text-xs">{customerName}</p>
+                        <p className="text-[11px] text-gray-400">{customerPhone || 'No Phone'}</p>
                         <p className="text-[10px] text-gray-500 mt-1 leading-relaxed line-clamp-2">
-                          {order.shippingAddress || order.address || 'Address not provided'}
+                          {addressText}
                         </p>
                       </td>
 
@@ -149,10 +151,10 @@ export default async function AdminOrdersPage() {
                           {items.map((item: any, idx: number) => (
                             <div key={idx} className="text-[11px] text-gray-300">
                               <span className="font-medium text-white">
-                                {item.product?.name || item.name || 'Artisanal Attar'}
+                                {item.productName}
                               </span>
                               <span className="text-[10px] text-gray-400 block">
-                                Size: {item.variant?.size || item.size || 'Standard'} × {item.quantity || 1}
+                                Size: {item.variantSize || 'Standard'} × {item.quantity} (₹{Number(item.totalPrice || 0)})
                               </span>
                             </div>
                           ))}
@@ -165,10 +167,10 @@ export default async function AdminOrdersPage() {
                       {/* Total */}
                       <td className="py-4 px-4 whitespace-nowrap">
                         <span className="font-bold text-[#d9b444] text-sm">
-                          ₹{Number(order.totalAmount || order.total || 0).toLocaleString('en-IN')}
+                          ₹{Number(order.grandTotal || 0).toLocaleString('en-IN')}
                         </span>
                         <span className="block text-[10px] text-gray-500 uppercase">
-                          {order.paymentMethod || 'COD'}
+                          COD / UPI
                         </span>
                       </td>
 
@@ -178,13 +180,13 @@ export default async function AdminOrdersPage() {
                           <input type="hidden" name="orderId" value={order.id} />
                           <select
                             name="status"
-                            defaultValue={order.status}
+                            defaultValue={currentStatus}
                             className={`w-full text-xs font-semibold py-1.5 px-2 rounded-lg border outline-none cursor-pointer ${
-                              order.status === 'DELIVERED'
+                              currentStatus === 'DELIVERED'
                                 ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800/50'
-                                : order.status === 'SHIPPED'
+                                : currentStatus === 'SHIPPED'
                                 ? 'bg-blue-950/40 text-blue-400 border-blue-800/50'
-                                : order.status === 'CANCELLED'
+                                : currentStatus === 'CANCELLED'
                                 ? 'bg-red-950/40 text-red-400 border-red-800/50'
                                 : 'bg-amber-950/40 text-amber-400 border-amber-800/50'
                             }`}
@@ -211,7 +213,7 @@ export default async function AdminOrdersPage() {
                           <input
                             type="text"
                             name="trackingNumber"
-                            defaultValue={order.trackingNumber || ''}
+                            defaultValue={trackingNo}
                             placeholder="Tracking / AWB No."
                             className="w-full bg-[#0d0f12] border border-[#232731] rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
                           />
@@ -227,7 +229,6 @@ export default async function AdminOrdersPage() {
                       {/* Print Label & WhatsApp Action */}
                       <td className="py-4 px-4 text-right whitespace-nowrap">
                         <div className="flex flex-col items-end gap-1.5">
-                          {/* 🖨️ Shipping Label Print Button */}
                           <Link
                             href={`/admin/orders/label?id=${order.id}`}
                             target="_blank"
@@ -236,9 +237,9 @@ export default async function AdminOrdersPage() {
                             🖨️ Print Label
                           </Link>
 
-                          {order.customerPhone || order.phone ? (
+                          {customerPhone ? (
                             <a
-                              href={`https://wa.me/${(order.customerPhone || order.phone).replace(/[^0-9]/g, '')}?text=${waMessage}`}
+                              href={`https://wa.me/${customerPhone.replace(/[^0-9]/g, '')}?text=${waMessage}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 hover:bg-[#25D366] hover:text-black px-2.5 py-1 rounded text-[10px] font-medium transition-all"
@@ -254,7 +255,7 @@ export default async function AdminOrdersPage() {
               ) : (
                 <tr>
                   <td colSpan={7} className="text-center py-12 text-gray-500 text-xs">
-                    No orders received yet. New customer orders will appear here automatically.
+                    No orders received yet.
                   </td>
                 </tr>
               )}

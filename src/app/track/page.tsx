@@ -2,164 +2,139 @@ import prisma from '@/lib/prisma';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-export default async function TrackOrderPage({
+export default async function TrackPage({
   searchParams,
 }: {
-  searchParams: { q?: string };
+  searchParams: { orderId?: string; q?: string };
 }) {
-  const query = searchParams?.q?.trim();
+  const query = (searchParams.orderId || searchParams.q || '').trim();
 
-  let order = null;
+  let order: any = null;
+
   if (query) {
-    order = await prisma.order.findFirst({
+    const cleanQuery = query.replace('#', '');
+
+    order = await (prisma.order.findFirst as any)({
       where: {
         OR: [
-          { orderNumber: query.toUpperCase() },
-          { id: query },
-          { customer: { user: { phoneNumber: query } } },
+          { orderNumber: cleanQuery },
+          { id: cleanQuery },
+          { customer: { phone: cleanQuery } },
         ],
       },
       include: {
         orderItems: true,
-        payment: true,
-        customer: { include: { user: true } },
+        shipping: true,
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    }).catch(() => null);
   }
 
-  const shipping = (order?.shippingAddressSnapshot as any) || {};
+  const getStepNumber = (status: string) => {
+    switch (status) {
+      case 'PENDING': return 1;
+      case 'CONFIRMED': return 2;
+      case 'SHIPPED': return 3;
+      case 'DELIVERED': return 4;
+      default: return 1;
+    }
+  };
 
-  // Status Step Mapper
-  const steps = ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
-  const currentStatus = order?.orderStatus || 'CONFIRMED';
-  const currentStepIndex = steps.indexOf(currentStatus) !== -1 ? steps.indexOf(currentStatus) : 0;
+  const status = order?.orderStatus || 'PENDING';
+  const currentStep = order ? getStepNumber(status) : 0;
 
   return (
-    <main className="min-h-screen bg-[#0b0c10] text-[#fbf8f2]">
-      {/* Header */}
-      <header className="border-b border-[#232731] bg-[#101217]/90 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-2xl font-serif tracking-widest text-[#d9b444] font-bold">
+    <div className="min-h-screen bg-[#0b0c10] text-[#fbf8f2] py-12 px-6">
+      <div className="max-w-xl mx-auto space-y-8">
+        <div className="text-center space-y-2">
+          <Link href="/" className="text-xl font-serif tracking-widest text-[#d9b444] font-bold">
             TABASSUM ATTAR
           </Link>
-          <Link href="/" className="text-xs uppercase tracking-wider text-gray-400 hover:text-[#d9b444]">
-            ← Back to Store
-          </Link>
-        </div>
-      </header>
-
-      <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-serif text-white font-medium">Track Your Consignment</h1>
+          <h2 className="text-2xl font-serif font-bold text-white">Track Your Order</h2>
           <p className="text-xs text-gray-400">
-            Enter your Order Number (e.g. TAB-395575) or registered Mobile Number
+            Enter your Order ID (e.g. #ORD-12345) or Phone Number
           </p>
         </div>
 
-        {/* Search Bar */}
-        <form method="GET" className="flex gap-2 max-w-lg mx-auto">
+        <form method="GET" action="/track" className="flex gap-2">
           <input
+            type="text"
             name="q"
-            defaultValue={query || ''}
-            placeholder="e.g. TAB-395575 or 7306610349"
+            defaultValue={query}
+            placeholder="Enter Order ID or Mobile..."
             required
-            className="flex-1 bg-[#14161d] border border-[#232731] rounded-lg px-4 py-3 text-xs text-white uppercase outline-none focus:border-[#d9b444]"
+            className="flex-1 bg-[#14161d] border border-[#232731] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-500 focus:border-[#d9b444] outline-none"
           />
           <button
             type="submit"
-            className="bg-[#c69e2a] hover:bg-[#d9b444] text-black font-bold px-6 py-3 rounded-lg text-xs uppercase tracking-wider transition-colors shadow-lg shadow-[#c69e2a]/20"
+            className="bg-[#c69e2a] hover:bg-[#d9b444] text-black font-bold px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
           >
             Track
           </button>
         </form>
 
-        {query && !order && (
-          <div className="bg-[#14161d] border border-red-900/40 rounded-xl p-8 text-center space-y-2">
-            <p className="text-sm font-semibold text-red-400">No consignment found for &quot;{query}&quot;</p>
-            <p className="text-xs text-gray-500">Please double-check your Order Number or Phone Number.</p>
-          </div>
-        )}
-
-        {order && (
-          <div className="bg-[#14161d] border border-[#232731] rounded-2xl p-6 md:p-8 space-y-8 shadow-2xl">
-            {/* Summary Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-[#232731] gap-4">
-              <div>
-                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Order Consignment</span>
-                <p className="text-xl font-mono font-bold text-[#d9b444]">#{order.orderNumber}</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </p>
-              </div>
-              <div className="text-left sm:text-right">
-                <span className="text-[10px] text-gray-500 uppercase tracking-widest block">Total Payable</span>
-                <span className="text-xl font-bold font-mono text-white">₹{Number(order.grandTotal).toFixed(2)}</span>
-                <span className="text-[10px] text-gray-400 block mt-0.5">({order.payment?.paymentMethod})</span>
-              </div>
-            </div>
-
-            {/* Stepper Timeline */}
-            <div>
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-4 font-semibold">Live Dispatch Timeline</p>
-              <div className="grid grid-cols-4 gap-2 text-center relative">
-                {steps.map((step, idx) => {
-                  const isDone = idx <= currentStepIndex;
-                  return (
-                    <div key={step} className="space-y-2">
-                      <div
-                        className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                          isDone
-                            ? 'bg-[#d9b444] text-black shadow-lg shadow-[#d9b444]/30'
-                            : 'bg-[#232731] text-gray-500 border border-[#333a48]'
-                        }`}
-                      >
-                        {isDone ? '✓' : idx + 1}
-                      </div>
-                      <p className={`text-[10px] uppercase tracking-wider font-semibold ${isDone ? 'text-[#d9b444]' : 'text-gray-600'}`}>
-                        {step}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Items & Shipping Address */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-[#232731] text-xs">
-              <div className="space-y-2 bg-[#0d0f12] p-4 rounded-xl border border-[#232731]">
-                <p className="font-bold text-[#d9b444] uppercase tracking-wider text-[11px]">Ordered Fragrances</p>
-                {order.orderItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-gray-300 py-1 border-b border-[#1a1e27] last:border-none">
-                    <span>{item.productName} ({item.variantSize}) × {item.quantity}</span>
-                    <span className="font-mono text-white">₹{Number(item.totalPrice).toFixed(0)}</span>
+        {query && (
+          <div className="bg-[#14161d] border border-[#232731] rounded-2xl p-6 shadow-xl space-y-6">
+            {order ? (
+              <>
+                <div className="flex items-center justify-between border-b border-[#232731] pb-4">
+                  <div>
+                    <span className="text-[10px] uppercase text-gray-400">Order Number</span>
+                    <p className="text-base font-mono font-bold text-[#d9b444]">
+                      #{order.orderNumber}
+                    </p>
                   </div>
-                ))}
-              </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase text-gray-400">Live Status</span>
+                    <p className="text-xs font-bold text-white uppercase bg-[#1f2430] px-2.5 py-1 rounded border border-[#2e3440] mt-0.5">
+                      {status}
+                    </p>
+                  </div>
+                </div>
 
-              <div className="space-y-1 bg-[#0d0f12] p-4 rounded-xl border border-[#232731]">
-                <p className="font-bold text-[#d9b444] uppercase tracking-wider text-[11px]">Delivery Consignee</p>
-                <p className="font-semibold text-white">{shipping.fullName}</p>
-                <p className="text-gray-400">{shipping.address}</p>
-                <p className="text-gray-400">{shipping.city}, {shipping.state} - {shipping.pinCode}</p>
-                <p className="text-gray-400">📞 {shipping.phoneNumber}</p>
-              </div>
-            </div>
+                {/* Timeline Progress */}
+                <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-medium pt-2">
+                  <div className={`space-y-1 ${currentStep >= 1 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
+                    <div className={`h-1.5 rounded-full ${currentStep >= 1 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
+                    <span>Order Placed</span>
+                  </div>
+                  <div className={`space-y-1 ${currentStep >= 2 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
+                    <div className={`h-1.5 rounded-full ${currentStep >= 2 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
+                    <span>Confirmed</span>
+                  </div>
+                  <div className={`space-y-1 ${currentStep >= 3 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
+                    <div className={`h-1.5 rounded-full ${currentStep >= 3 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
+                    <span>Shipped</span>
+                  </div>
+                  <div className={`space-y-1 ${currentStep >= 4 ? 'text-emerald-400' : 'text-gray-600'}`}>
+                    <div className={`h-1.5 rounded-full ${currentStep >= 4 ? 'bg-emerald-400' : 'bg-[#232731]'}`} />
+                    <span>Delivered</span>
+                  </div>
+                </div>
 
-            {/* Help / Support */}
-            <div className="text-center pt-4">
-              <a
-                href="https://wa.me/917306610349?text=Hello%20Tabassum%20Attar,%20need%20help%20tracking%20my%20order."
-                target="_blank"
-                className="text-xs text-[#25D366] hover:underline"
-              >
-                Need help with your delivery? Chat with us on WhatsApp →
-              </a>
-            </div>
+                {order.shipping?.trackingNumber && (
+                  <div className="bg-[#0e1015] border border-[#2e3440] rounded-xl p-4 space-y-1">
+                    <span className="text-[10px] uppercase tracking-wider text-gray-400">
+                      Tracking Consignment
+                    </span>
+                    <p className="text-xs text-white">
+                      Tracking No: <span className="font-mono font-bold text-[#d9b444]">{order.shipping.trackingNumber}</span>
+                    </p>
+                    {order.shipping.carrier && (
+                      <p className="text-[11px] text-gray-400">Via: {order.shipping.carrier}</p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-6 text-gray-400 text-xs">
+                No order found for &quot;{query}&quot;. Please verify the details.
+              </div>
+            )}
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
