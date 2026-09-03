@@ -1,246 +1,307 @@
 'use client';
 
-import React, { useState } from 'react';
-import { createCheckoutOrder } from './actions';
+import { useState, useTransition } from 'react';
+import Image from 'next/image';
+import { processOrder } from './actions';
 
-interface VariantInfo {
-  id: string;
-  name: string;
-  labelSize: string;
-  price: number;
-  discountPrice: number | null;
-}
+export default function CheckoutForm({
+  product,
+  variant,
+}: {
+  product: any;
+  variant: any;
+}) {
+  const [isPending, startTransition] = useTransition();
 
-export default function CheckoutForm({ variant }: { variant: VariantInfo | null }) {
-  const [loading, setLoading] = useState(false);
+  // Coupon States
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; percent: number } | null>(null);
+  const [couponError, setCouponError] = useState('');
+
+  // Payment Method
   const [paymentMethod, setPaymentMethod] = useState<'COD' | 'UPI'>('COD');
-  const [couponCode, setCouponCode] = useState('');
 
-  const unitPrice = variant ? (variant.discountPrice || variant.price) : 0;
-  const isCouponApplied = couponCode.trim().toUpperCase() === 'ROYAL10';
-  const discountAmount = isCouponApplied ? Math.round(unitPrice * 0.10) : 0;
-  const priceAfterDiscount = Math.max(0, unitPrice - discountAmount);
-  const shippingCharge = priceAfterDiscount >= 999 ? 0 : 70;
-  const codCharge = paymentMethod === 'COD' ? 50 : 0;
-  const grandTotal = priceAfterDiscount + shippingCharge + codCharge;
+  // Pricing calculations
+  const basePrice = Number(variant.discountPrice || variant.price || 0);
+  const discountAmount = appliedCoupon ? Math.round((basePrice * appliedCoupon.percent) / 100) : 0;
+  const grandTotal = Math.max(0, basePrice - discountAmount);
 
-  async function handleOrderSubmit(e: React.FormEvent<HTMLFormElement>) {
+  // Apply Coupon Logic
+  const handleApplyCoupon = (e: React.MouseEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setCouponError('');
 
-    try {
-      const formData = new FormData(e.currentTarget);
-      const res = await createCheckoutOrder(formData);
+    const cleanCode = couponInput.trim().toUpperCase();
 
-      if (!res.success || !res.orderNumber || res.grandTotal === undefined) {
-        alert(res.error || 'Failed to place order.');
-        setLoading(false);
-        return;
-      }
-
-      if (res.paymentMethod === 'COD') {
-        window.location.href = `/checkout/success?orderNumber=${res.orderNumber}`;
-        return;
-      }
-
-      const options = {
-        key: res.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: Math.round(Number(res.grandTotal) * 100),
-        currency: 'INR',
-        name: 'TABASSUM ATTAR',
-        description: `Order #${res.orderNumber}`,
-        order_id: res.razorpayOrderId,
-        prefill: {
-          name: res.fullName,
-          email: res.email,
-          contact: res.phoneNumber,
-        },
-        theme: {
-          color: '#d9b444',
-        },
-        handler: async function (response: any) {
-          try {
-            const verifyRes = await fetch('/api/razorpay/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                dbOrderId: res.dbOrderId,
-              }),
-            });
-
-            if (verifyRes.ok) {
-              window.location.href = `/checkout/success?orderNumber=${res.orderNumber}`;
-            } else {
-              alert('Payment verification failed. Please contact support.');
-              setLoading(false);
-            }
-          } catch (err) {
-            console.error(err);
-            alert('Verification network error.');
-            setLoading(false);
-          }
-        },
-        modal: {
-          ondismiss: function () {
-            setLoading(false);
-          },
-        },
-      };
-
-      const razorpayWindow = new (window as any).Razorpay(options);
-      razorpayWindow.open();
-    } catch (err: any) {
-      console.error(err);
-      alert(err.message || 'Something went wrong.');
-      setLoading(false);
+    if (cleanCode === 'ROYAL10') {
+      setAppliedCoupon({ code: 'ROYAL10', percent: 10 });
+      setCouponError('');
+    } else if (!cleanCode) {
+      setCouponError('Please enter a coupon code.');
+    } else {
+      setCouponError('Invalid coupon code. Try ROYAL10');
     }
-  }
+  };
+
+  const handleRemoveCoupon = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError('');
+  };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-      <form onSubmit={handleOrderSubmit} className="md:col-span-2 bg-[#14161d] border border-[#232731] rounded-xl p-6 space-y-4">
-        <input type="hidden" name="variantId" value={variant?.id || ''} />
+    <form
+      action={(formData) => {
+        startTransition(async () => {
+          await processOrder(formData);
+        });
+      }}
+      className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start"
+    >
+      <input type="hidden" name="variantId" value={variant.id} />
+      <input type="hidden" name="couponCode" value={appliedCoupon?.code || ''} />
+      <input type="hidden" name="couponDiscount" value={discountAmount} />
+      <input type="hidden" name="paymentMethod" value={paymentMethod} />
 
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#d9b444]">Delivery Details</h2>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-400">Full Name</label>
-            <input required name="fullName" placeholder="e.g. Mohammed Shafi" className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white outline-none focus:border-[#d9b444]" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400">Phone Number</label>
-            <input required name="phoneNumber" placeholder="e.g. 9876543210" className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white outline-none focus:border-[#d9b444]" />
-          </div>
-        </div>
-
+      {/* Left Column: Shipping Details Form */}
+      <div className="lg:col-span-7 bg-[#14161d] border border-[#232731] rounded-2xl p-6 shadow-xl space-y-6">
         <div>
-          <label className="text-xs text-gray-400">Email Address (for order receipt)</label>
-          <input required type="email" name="email" placeholder="name@example.com" className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white outline-none focus:border-[#d9b444]" />
-        </div>
-
-        <div>
-          <label className="text-xs text-gray-400">Delivery Address</label>
-          <input required name="address" placeholder="House/Flat No, Building, Street" className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white outline-none focus:border-[#d9b444]" />
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs text-gray-400">City / Town</label>
-            <input required name="city" placeholder="Kottakkal" className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white outline-none focus:border-[#d9b444]" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400">State</label>
-            <input required name="state" defaultValue="Kerala" className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white outline-none focus:border-[#d9b444]" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400">PIN Code</label>
-            <input required name="pinCode" placeholder="676503" className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white outline-none focus:border-[#d9b444]" />
-          </div>
-        </div>
-
-        <div className="pt-2">
-          <label className="text-xs text-gray-400">Discount Coupon / Promo Code</label>
-          <input 
-            name="couponCode" 
-            value={couponCode}
-            onChange={(e) => setCouponCode(e.target.value)}
-            placeholder="Enter coupon code (e.g. ROYAL10)" 
-            className="w-full bg-[#0d0f12] border border-[#232731] rounded p-2.5 text-xs text-white uppercase outline-none focus:border-[#d9b444] mt-1" 
-          />
-          <p className="text-[11px] text-[#d9b444] mt-1">
-            ✨ Special Offer: Use code <strong className="font-bold underline">ROYAL10</strong> to get 10% instant discount!
+          <h2 className="text-xl font-serif font-bold text-white tracking-wide">
+            Shipping & Delivery Details
+          </h2>
+          <p className="text-xs text-gray-400 mt-1">
+            Please provide your complete shipping address for express delivery.
           </p>
         </div>
 
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#d9b444] pt-4 border-t border-[#232731]">Payment Method</h2>
-        
-        <div className="space-y-2 text-xs">
-          <label className="flex items-center gap-3 p-3 rounded-lg border border-[#232731] bg-[#0d0f12] cursor-pointer hover:border-[#d9b444]">
-            <input 
-              type="radio" 
-              name="paymentMethod" 
-              value="COD" 
-              checked={paymentMethod === 'COD'} 
-              onChange={() => setPaymentMethod('COD')}
-              className="accent-[#d9b444]" 
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+              Full Name *
+            </label>
+            <input
+              type="text"
+              name="fullName"
+              required
+              placeholder="Enter your full name"
+              className="w-full bg-[#0b0c10] border border-[#232731] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
             />
-            <div>
-              <p className="font-semibold text-white">Cash on Delivery (COD)</p>
-              <p className="text-[11px] text-gray-400">Pay cash upon delivery (+₹50 Handling fee)</p>
-            </div>
-          </label>
+          </div>
 
-          <label className="flex items-center gap-3 p-3 rounded-lg border border-[#232731] bg-[#0d0f12] cursor-pointer hover:border-[#d9b444]">
-            <input 
-              type="radio" 
-              name="paymentMethod" 
-              value="UPI" 
-              checked={paymentMethod === 'UPI'} 
-              onChange={() => setPaymentMethod('UPI')}
-              className="accent-[#d9b444]" 
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+              WhatsApp / Mobile Number *
+            </label>
+            <input
+              type="tel"
+              name="phoneNumber"
+              required
+              placeholder="10-digit mobile number"
+              className="w-full bg-[#0b0c10] border border-[#232731] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+              Complete Delivery Address (House / Building / Street) *
+            </label>
+            <textarea
+              name="address"
+              required
+              rows={3}
+              placeholder="House Name / Flat No, Street or Locality"
+              className="w-full bg-[#0b0c10] border border-[#232731] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <p className="font-semibold text-white">UPI / Google Pay / PhonePe / Cards</p>
-              <p className="text-[11px] text-gray-400">Instant contactless & zero extra handling fees</p>
-            </div>
-          </label>
-        </div>
-
-        <button 
-          type="submit" 
-          disabled={loading || !variant}
-          className="w-full bg-[#c69e2a] hover:bg-[#d9b444] text-black font-bold py-3.5 rounded-lg text-xs uppercase tracking-wider transition-colors shadow-lg shadow-[#c69e2a]/20 disabled:opacity-50"
-        >
-          {loading ? 'Processing...' : (paymentMethod === 'UPI' ? `Pay ₹${grandTotal} Online` : 'Confirm & Place Order')}
-        </button>
-      </form>
-
-      <div className="bg-[#14161d] border border-[#232731] rounded-xl p-6 space-y-4">
-        <h2 className="text-sm font-serif text-[#d9b444] tracking-wider">Order Summary</h2>
-
-        {variant ? (
-          <div className="space-y-3 text-xs">
-            <div className="border-b border-[#232731] pb-3">
-              <p className="font-semibold text-white">{variant.name}</p>
-              <p className="text-gray-400">{variant.labelSize}</p>
-              <p className="text-[#d9b444] font-medium mt-1">₹{unitPrice}</p>
+              <label className="block text-[11px] font-semibold text-gray-300 uppercase mb-1">
+                City / Town *
+              </label>
+              <input
+                type="text"
+                name="city"
+                required
+                placeholder="e.g. Kottakkal"
+                className="w-full bg-[#0b0c10] border border-[#232731] rounded-xl px-3 py-2.5 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
+              />
             </div>
 
-            <div className="space-y-1.5 text-gray-300">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>₹{unitPrice}</span>
-              </div>
-              {isCouponApplied && (
-                <div className="flex justify-between text-[#d9b444]">
-                  <span>Discount (ROYAL10)</span>
-                  <span>-₹{discountAmount}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span>Shipping</span>
-                <span className="text-green-400">{shippingCharge === 0 ? 'FREE' : `₹${shippingCharge}`}</span>
-              </div>
-              {paymentMethod === 'COD' && (
-                <div className="flex justify-between text-yellow-500">
-                  <span>COD Handling Fee</span>
-                  <span>₹50</span>
-                </div>
-              )}
-              <div className="flex justify-between text-white font-bold pt-2 border-t border-[#232731] text-sm">
-                <span>Total Amount</span>
-                <span className="text-[#d9b444]">₹{grandTotal}</span>
-              </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-300 uppercase mb-1">
+                State *
+              </label>
+              <input
+                type="text"
+                name="state"
+                defaultValue="Kerala"
+                required
+                className="w-full bg-[#0b0c10] border border-[#232731] rounded-xl px-3 py-2.5 text-xs text-white focus:border-[#d9b444] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-300 uppercase mb-1">
+                PIN Code *
+              </label>
+              <input
+                type="text"
+                name="pinCode"
+                required
+                placeholder="6-digit PIN"
+                className="w-full bg-[#0b0c10] border border-[#232731] rounded-xl px-3 py-2.5 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
+              />
             </div>
           </div>
-        ) : (
-          <p className="text-xs text-gray-400">No fragrance selected. Please return to catalog.</p>
-        )}
+        </div>
+
+        {/* Payment Method Selector */}
+        <div className="pt-4 border-t border-[#232731] space-y-3">
+          <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider">
+            Select Payment Method
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('COD')}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                paymentMethod === 'COD'
+                  ? 'border-[#d9b444] bg-[#d9b444]/15'
+                  : 'border-[#232731] bg-[#0b0c10] text-gray-400'
+              }`}
+            >
+              <span className="block text-xs font-bold text-white">💵 Cash on Delivery</span>
+              <span className="text-[10px] text-gray-400">Pay when order arrives</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('UPI')}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                paymentMethod === 'UPI'
+                  ? 'border-[#d9b444] bg-[#d9b444]/15'
+                  : 'border-[#232731] bg-[#0b0c10] text-gray-400'
+              }`}
+            >
+              <span className="block text-xs font-bold text-white">⚡ UPI / Online</span>
+              <span className="text-[10px] text-gray-400">GPay, PhonePe, Cards</span>
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+
+      {/* Right Column: Order Summary & Coupon */}
+      <div className="lg:col-span-5 space-y-4">
+        {/* Fragrance Item Card */}
+        <div className="bg-[#14161d] border border-[#232731] rounded-2xl p-5 shadow-xl space-y-4">
+          <span className="text-[10px] uppercase font-bold tracking-widest text-[#d9b444] block">
+            Selected Fragrance
+          </span>
+
+          <div className="flex gap-4 items-center">
+            <div className="w-16 h-16 rounded-xl bg-[#0b0c10] border border-[#232731] relative overflow-hidden flex-shrink-0 flex items-center justify-center">
+              {product.images?.[0]?.url ? (
+                <Image src={product.images[0].url} alt={product.name} fill className="object-cover" />
+              ) : (
+                <span className="text-2xl">🧴</span>
+              )}
+            </div>
+            <div>
+              <h3 className="font-serif font-bold text-white text-base">{product.name}</h3>
+              <p className="text-xs text-[#d9b444] font-medium mt-0.5">
+                Size: {variant.labelSize || 'Standard'}
+              </p>
+              <p className="text-xs text-gray-400">Qty: 1 Bottle</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Promo Code / Coupon Section */}
+        <div className="bg-[#14161d] border border-[#232731] rounded-2xl p-5 shadow-xl space-y-3">
+          <span className="text-xs uppercase tracking-wider font-semibold text-gray-300 block">
+            Have a Promo Code?
+          </span>
+
+          {!appliedCoupon ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={couponInput}
+                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                placeholder="Enter Code (e.g. ROYAL10)"
+                className="flex-1 bg-[#0b0c10] border border-[#232731] rounded-xl px-3 py-2.5 text-xs text-white placeholder-gray-600 uppercase font-mono focus:border-[#d9b444] outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleApplyCoupon}
+                className="bg-[#c69e2a] hover:bg-[#d9b444] text-black font-bold text-xs px-4 py-2.5 rounded-xl uppercase tracking-wider transition-all cursor-pointer shadow"
+              >
+                Apply
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between bg-[#0b0c10] border border-[#d9b444]/50 p-3 rounded-xl">
+              <div>
+                <span className="font-mono text-xs font-bold text-[#d9b444] block">
+                  🎉 {appliedCoupon.code} APPLIED
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {appliedCoupon.percent}% discount applied to this order
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveCoupon}
+                className="text-[11px] text-red-400 hover:text-red-300 font-semibold underline cursor-pointer"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          {couponError && (
+            <p className="text-[11px] text-red-400 font-medium">{couponError}</p>
+          )}
+        </div>
+
+        {/* Order Bill Breakdown */}
+        <div className="bg-[#14161d] border border-[#232731] rounded-2xl p-5 shadow-xl space-y-3 text-xs">
+          <div className="flex justify-between text-gray-400">
+            <span>Item Price</span>
+            <span>₹{basePrice.toLocaleString('en-IN')}</span>
+          </div>
+
+          {appliedCoupon && (
+            <div className="flex justify-between text-[#d9b444] font-medium">
+              <span>Promo Discount ({appliedCoupon.code})</span>
+              <span>-₹{discountAmount.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between text-gray-400">
+            <span>Express Delivery</span>
+            <span className="text-emerald-400 font-medium uppercase">Free Shipping</span>
+          </div>
+
+          <div className="flex justify-between text-sm font-bold text-white border-t border-[#232731] pt-3">
+            <span>Total Payable</span>
+            <span className="text-lg text-[#d9b444]">
+              ₹{grandTotal.toLocaleString('en-IN')}
+            </span>
+          </div>
+
+          {/* Place Order Action Button */}
+          <button
+            type="submit"
+            disabled={isPending}
+            className="w-full bg-[#c69e2a] hover:bg-[#d9b444] disabled:opacity-50 text-black font-bold text-center py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-[#c69e2a]/20 cursor-pointer mt-2"
+          >
+            {isPending ? 'Placing Order...' : `Confirm Order • ₹${grandTotal.toLocaleString('en-IN')}`}
+          </button>
+        </div>
+      </div>
+    </form>
   );
 }
