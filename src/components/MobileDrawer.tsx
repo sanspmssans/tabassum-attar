@@ -50,18 +50,21 @@ export default function MobileDrawer({
 
   return (
     <>
-      {/* ☰ Mobile Hamburger Button */}
+      {/* ☰ Hamburger Button (മൊബൈലിലും ലാപ്‌ടോപ്പിലും കാണും) */}
       <button
         onClick={() => setIsOpen(true)}
         aria-label="Open Navigation Menu"
-        className="md:hidden p-2 text-gray-300 hover:text-[#d9b444] transition-colors focus:outline-none"
+        className="flex items-center gap-2 p-2 text-gray-300 hover:text-[#d9b444] transition-colors focus:outline-none cursor-pointer"
       >
+        <span className="hidden sm:inline text-xs uppercase tracking-widest font-semibold text-gray-400 hover:text-[#d9b444]">
+          Menu
+        </span>
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
 
-      {/* Backdrop */}
+      {/* Backdrop Overlay */}
       {isOpen && (
         <div
           onClick={closeDrawer}
@@ -71,7 +74,7 @@ export default function MobileDrawer({
 
       {/* Sliding Drawer Menu */}
       <aside
-        className={`fixed top-0 right-0 h-full w-4/5 max-w-sm bg-[#101217] border-l border-[#232731] z-50 p-6 flex flex-col justify-between overflow-y-auto transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 h-full w-4/5 max-w-sm md:max-w-md bg-[#101217] border-l border-[#232731] z-50 p-6 flex flex-col justify-between overflow-y-auto transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -83,7 +86,7 @@ export default function MobileDrawer({
             </span>
             <button
               onClick={closeDrawer}
-              className="text-gray-400 hover:text-white p-1 text-lg font-bold"
+              className="text-gray-400 hover:text-white p-1 text-lg font-bold cursor-pointer"
             >
               ✕
             </button>
@@ -91,13 +94,13 @@ export default function MobileDrawer({
 
           {/* Quick Nav Links */}
           <div className="flex flex-col space-y-3 text-sm border-b border-[#232731] pb-4">
-            <Link href="/" onClick={closeDrawer} className="text-gray-200 hover:text-[#d9b444]">
+            <Link href="/" onClick={closeDrawer} className="text-gray-200 hover:text-[#d9b444] transition-colors">
               Home
             </Link>
-            <Link href="/#collection" onClick={closeDrawer} className="text-gray-200 hover:text-[#d9b444]">
+            <Link href="/#collection" onClick={closeDrawer} className="text-gray-200 hover:text-[#d9b444] transition-colors">
               All Collections
             </Link>
-            <Link href="/track" onClick={closeDrawer} className="text-[#d9b444] font-medium">
+            <Link href="/track" onClick={closeDrawer} className="text-[#d9b444] font-medium transition-colors">
               🔍 Track Order
             </Link>
           </div>
@@ -117,7 +120,7 @@ export default function MobileDrawer({
                   <div key={cat.id} className="border border-[#1f222b] rounded-lg bg-[#14161d] overflow-hidden">
                     <button
                       onClick={() => toggleCategory(cat.id)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-left text-white font-medium hover:bg-[#1a1e27]"
+                      className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-left text-white font-medium hover:bg-[#1a1e27] cursor-pointer"
                     >
                       <span>{cat.name}</span>
                       <span className="text-[#d9b444] text-xs">{isCatOpen ? '▲' : '▼'}</span>
@@ -133,7 +136,7 @@ export default function MobileDrawer({
                               <div key={sub.id} className="pl-2 border-l border-[#2e3440] my-1.5">
                                 <button
                                   onClick={() => toggleSubCategory(sub.id)}
-                                  className="w-full flex items-center justify-between text-left text-gray-300 hover:text-[#d9b444] text-[11px] py-1"
+                                  className="w-full flex items-center justify-between text-left text-gray-300 hover:text-[#d9b444] text-[11px] py-1 cursor-pointer"
                                 >
                                   <span>↳ {sub.name}</span>
                                   <span className="text-gray-500 text-[10px]">
@@ -150,7 +153,7 @@ export default function MobileDrawer({
                                           key={p.id}
                                           href={`/product/${p.slug}`}
                                           onClick={closeDrawer}
-                                          className="block text-[10px] text-gray-400 hover:text-[#d9b444] py-0.5"
+                                          className="block text-[10px] text-gray-400 hover:text-[#d9b444] py-0.5 transition-colors"
                                         >
                                           • {p.name}
                                         </Link>
@@ -172,7 +175,7 @@ export default function MobileDrawer({
                                 key={p.id}
                                 href={`/product/${p.slug}`}
                                 onClick={closeDrawer}
-                                className="block text-[11px] text-gray-400 hover:text-[#d9b444] py-0.5"
+                                className="block text-[11px] text-gray-400 hover:text-[#d9b444] py-0.5 transition-colors"
                               >
                                 • {p.name}
                               </Link>
