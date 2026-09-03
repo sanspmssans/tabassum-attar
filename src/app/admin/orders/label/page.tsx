@@ -6,9 +6,11 @@ export const dynamic = 'force-dynamic';
 export default async function PrintShippingLabelPage({
   searchParams,
 }: {
-  searchParams: { id?: string };
+  searchParams: Promise<{ id?: string }> | { id?: string };
 }) {
-  const orderId = searchParams.id;
+  // Await searchParams for Next.js 15 compatibility
+  const resolvedParams = await searchParams;
+  const orderId = resolvedParams?.id;
 
   if (!orderId) {
     return (
@@ -18,15 +20,20 @@ export default async function PrintShippingLabelPage({
     );
   }
 
-  const order: any = await (prisma.order.findUnique as any)({
-    where: { id: orderId },
-    include: {
-      orderItems: true,
-      shipping: true,
-      customer: true,
-      payment: true,
-    },
-  });
+  let order: any = null;
+  try {
+    order = await (prisma.order.findUnique as any)({
+      where: { id: orderId },
+      include: {
+        orderItems: true,
+        shipping: true,
+        customer: true,
+        payment: true,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching order:', error);
+  }
 
   if (!order) {
     return (
@@ -36,11 +43,18 @@ export default async function PrintShippingLabelPage({
     );
   }
 
-  // Parse shipping address snapshot with exact keys: phoneNumber, pinCode
-  const snapshot =
-    typeof order.shippingAddressSnapshot === 'string'
-      ? JSON.parse(order.shippingAddressSnapshot)
-      : order.shippingAddressSnapshot || {};
+  // Parse shipping address snapshot safely
+  let snapshot: any = {};
+  try {
+    if (typeof order.shippingAddressSnapshot === 'string') {
+      snapshot = JSON.parse(order.shippingAddressSnapshot);
+    } else if (order.shippingAddressSnapshot) {
+      snapshot = order.shippingAddressSnapshot;
+    }
+  } catch (err) {
+    console.error('Address parsing error:', err);
+    snapshot = {};
+  }
 
   const customerName =
     snapshot.fullName ||
@@ -74,8 +88,9 @@ export default async function PrintShippingLabelPage({
         >
           ← Back to Orders
         </Link>
+        {/* Handled via vanilla script listener to prevent Server Component onClick error */}
         <button
-          onClick={() => {}}
+          type="button"
           className="print-trigger bg-black hover:bg-neutral-800 text-white font-bold text-xs px-5 py-2 rounded shadow cursor-pointer"
         >
           🖨️ Print Label (4x6 / A4)
@@ -109,10 +124,10 @@ export default async function PrintShippingLabelPage({
               Order Number
             </span>
             <span className="font-mono text-base font-black tracking-wider">
-              #{order.orderNumber}
+              #{order.orderNumber || order.id?.slice(0, 8)}
             </span>
             <span className="text-[10px] block text-neutral-600">
-              Date: {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              Date: {order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
             </span>
           </div>
 
@@ -171,10 +186,10 @@ export default async function PrintShippingLabelPage({
             <tbody className="divide-y divide-neutral-200 font-medium">
               {items.map((item: any, idx: number) => (
                 <tr key={idx}>
-                  <td className="py-1.5 font-bold">{item.productName}</td>
+                  <td className="py-1.5 font-bold">{item.productName || item.title || 'Item'}</td>
                   <td className="py-1.5 text-neutral-600">{item.variantSize || 'Standard'}</td>
                   <td className="py-1.5 text-center font-bold">{item.quantity}</td>
-                  <td className="py-1.5 text-right">₹{Number(item.totalPrice || 0)}</td>
+                  <td className="py-1.5 text-right">₹{Number(item.totalPrice || item.price || 0)}</td>
                 </tr>
               ))}
             </tbody>
@@ -194,7 +209,7 @@ export default async function PrintShippingLabelPage({
           <div className="text-right">
             <span className="text-[10px] uppercase font-bold text-neutral-600 block">Total Amount</span>
             <span className="text-xl font-black text-black">
-              ₹{Number(order.grandTotal || 0).toLocaleString('en-IN')}
+              ₹{Number(order.grandTotal || order.total || 0).toLocaleString('en-IN')}
             </span>
           </div>
         </div>
