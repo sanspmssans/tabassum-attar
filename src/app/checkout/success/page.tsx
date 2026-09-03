@@ -77,7 +77,7 @@ export default async function CheckoutSuccessPage({
         {/* Actions */}
         <div className="space-y-3 pt-2">
           <a
-            href={`https://wa.me/919746333333?text=${waMessage}`}
+            href={`https://wa.me/917306610349?text=${waMessage}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-black font-bold py-3.5 px-4 rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#25D366]/20 cursor-pointer"
