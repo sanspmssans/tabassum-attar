@@ -1,109 +1,239 @@
 import prisma from '@/lib/prisma';
 import Link from 'next/link';
+import { updateOrderStatus, updateTrackingInfo } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminOrdersPage() {
-  const orders = await prisma.order.findMany({
+  // Fetch all orders with customer details and line items
+  const orders: any[] = await (prisma.order.findMany as any)({
     include: {
-      orderItems: true,
-      payment: true,
-      customer: { include: { user: true } },
+      items: {
+        include: {
+          product: true,
+          variant: true,
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
-  });
+  }).catch(() => []);
+
+  // Summary Metrics
+  const totalOrders = orders.length;
+  const pendingOrders = orders.filter((o: any) => o.status === 'PENDING').length;
+  const shippedOrders = orders.filter((o: any) => o.status === 'SHIPPED').length;
+  const totalRevenue = orders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount || o.total || 0)), 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#232731] pb-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-serif text-white font-medium">Customer Orders</h1>
-          <p className="text-xs text-gray-400 mt-1">Manage dispatch, customer details & print shipping labels</p>
+          <h2 className="text-2xl font-serif font-bold text-white tracking-wide">
+            Customer Orders
+          </h2>
+          <p className="text-xs text-gray-400 mt-1">
+            Track customer shipments, update fulfillment stages, and manage tracking numbers.
+          </p>
         </div>
-        <span className="text-xs bg-[#232731] text-[#d9b444] px-3 py-1.5 rounded-lg border border-[#333a48]">
-          Total Orders: {orders.length}
-        </span>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/track"
+            target="_blank"
+            className="text-xs text-[#d9b444] border border-[#c69e2a]/40 hover:bg-[#c69e2a]/10 px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <span>🔍</span> Customer Tracking Page
+          </Link>
+        </div>
       </div>
 
-      <div className="bg-[#14161d] border border-[#232731] rounded-xl overflow-hidden shadow-xl">
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-[#14161d] border border-[#232731] rounded-xl p-4">
+          <span className="text-[10px] uppercase text-gray-400 tracking-wider">Total Orders</span>
+          <p className="text-2xl font-bold text-white mt-1">{totalOrders}</p>
+        </div>
+
+        <div className="bg-[#14161d] border border-[#232731] rounded-xl p-4">
+          <span className="text-[10px] uppercase text-amber-400 tracking-wider">Pending Orders</span>
+          <p className="text-2xl font-bold text-amber-400 mt-1">{pendingOrders}</p>
+        </div>
+
+        <div className="bg-[#14161d] border border-[#232731] rounded-xl p-4">
+          <span className="text-[10px] uppercase text-blue-400 tracking-wider">In Transit / Shipped</span>
+          <p className="text-2xl font-bold text-blue-400 mt-1">{shippedOrders}</p>
+        </div>
+
+        <div className="bg-[#14161d] border border-[#232731] rounded-xl p-4">
+          <span className="text-[10px] uppercase text-[#d9b444] tracking-wider">Total Revenue</span>
+          <p className="text-2xl font-bold text-[#d9b444] mt-1">₹{totalRevenue.toLocaleString('en-IN')}</p>
+        </div>
+      </div>
+
+      {/* Orders List Table */}
+      <div className="bg-[#14161d] border border-[#232731] rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-gray-300">
-            <thead className="bg-[#1a1e27] text-gray-400 uppercase tracking-wider text-[11px] border-b border-[#232731]">
+            <thead className="bg-[#0e1015] border-b border-[#232731] text-[10px] uppercase tracking-wider text-gray-400">
               <tr>
-                <th className="py-4 px-6">Order ID & Date</th>
-                <th className="py-4 px-6">Customer Details</th>
-                <th className="py-4 px-6">Items Ordered</th>
-                <th className="py-4 px-6">Payment</th>
-                <th className="py-4 px-6">Total</th>
-                <th className="py-4 px-6 text-center">Shipping Label</th>
+                <th className="py-4 px-4">Order ID & Date</th>
+                <th className="py-4 px-4">Customer & Contact</th>
+                <th className="py-4 px-4">Fragrances Ordered</th>
+                <th className="py-4 px-4">Total Amount</th>
+                <th className="py-4 px-4">Fulfillment Status</th>
+                <th className="py-4 px-4">Tracking Details</th>
+                <th className="py-4 px-4 text-right">Quick Notify</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#232731]">
-              {orders.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-gray-500">
-                    No orders placed yet.
-                  </td>
-                </tr>
-              ) : (
-                orders.map((order) => {
-                  const snap = (order.shippingAddressSnapshot as any) || {};
+            <tbody className="divide-y divide-[#1f222b]">
+              {orders.length > 0 ? (
+                orders.map((order: any) => {
+                  const items: any[] = order.items || [];
+                  const orderDate = new Date(order.createdAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  });
+
+                  // WhatsApp Shipping Notification Message
+                  const waMessage = encodeURIComponent(
+                    `Hello ${order.customerName || 'Customer'},\n\nYour order #${order.orderNumber || order.id.slice(-6).toUpperCase()} from Tabassum Attar has been updated to: ${order.status}.\n${
+                      order.trackingNumber ? `Tracking No: ${order.trackingNumber} (${order.courierName || 'Courier'})\nTrack here: https://tabassum-attar.vercel.app/track` : ''
+                    }\n\nThank you for choosing Tabassum Attar!`
+                  );
+
                   return (
-                    <tr key={order.id} className="hover:bg-[#161a22] transition-colors">
-                      <td className="py-4 px-6">
-                        <span className="font-mono text-white font-bold block">{order.orderNumber}</span>
-                        <span className="text-[10px] text-gray-500">
-                          {new Date(order.createdAt).toLocaleDateString('en-IN', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                    <tr key={order.id} className="hover:bg-[#1a1e27] transition-colors align-top">
+                      {/* Order Info */}
+                      <td className="py-4 px-4 whitespace-nowrap">
+                        <span className="font-mono font-bold text-[#d9b444] text-xs block">
+                          #{order.orderNumber || order.id.slice(-8).toUpperCase()}
+                        </span>
+                        <span className="text-[10px] text-gray-500">{orderDate}</span>
+                      </td>
+
+                      {/* Customer Details */}
+                      <td className="py-4 px-4 min-w-[200px]">
+                        <p className="font-semibold text-white text-xs">{order.customerName || 'Direct Customer'}</p>
+                        <p className="text-[11px] text-gray-400">{order.customerPhone || order.phone || 'No Phone'}</p>
+                        <p className="text-[10px] text-gray-500 mt-1 leading-relaxed line-clamp-2">
+                          {order.shippingAddress || order.address || 'Address not provided'}
+                        </p>
+                      </td>
+
+                      {/* Line Items */}
+                      <td className="py-4 px-4 min-w-[220px]">
+                        <div className="space-y-1.5">
+                          {items.map((item: any, idx: number) => (
+                            <div key={idx} className="text-[11px] text-gray-300">
+                              <span className="font-medium text-white">
+                                {item.product?.name || item.name || 'Artisanal Attar'}
+                              </span>
+                              <span className="text-[10px] text-gray-400 block">
+                                Size: {item.variant?.size || item.size || 'Standard'} × {item.quantity}
+                              </span>
+                            </div>
+                          ))}
+                          {items.length === 0 && (
+                            <span className="text-[10px] text-gray-600 italic">Custom Order</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Total */}
+                      <td className="py-4 px-4 whitespace-nowrap">
+                        <span className="font-bold text-[#d9b444] text-sm">
+                          ₹{Number(order.totalAmount || order.total || 0).toLocaleString('en-IN')}
+                        </span>
+                        <span className="block text-[10px] text-gray-500 uppercase">
+                          {order.paymentMethod || 'UPI / COD'}
                         </span>
                       </td>
 
-                      <td className="py-4 px-6 space-y-0.5">
-                        <p className="font-semibold text-white">{snap.fullName || order.customer?.user?.name || 'Customer'}</p>
-                        <p className="text-[11px] text-[#d9b444]">📞 {snap.phoneNumber || order.customer?.user?.phoneNumber}</p>
-                        <p className="text-[10px] text-gray-400 truncate max-w-xs">{snap.city}, {snap.pinCode}</p>
+                      {/* Status Selector */}
+                      <td className="py-4 px-4 min-w-[150px]">
+                        <form action={updateOrderStatus} className="space-y-1.5">
+                          <input type="hidden" name="orderId" value={order.id} />
+                          <select
+                            name="status"
+                            defaultValue={order.status}
+                            className={`w-full text-xs font-semibold py-1.5 px-2 rounded-lg border outline-none cursor-pointer ${
+                              order.status === 'DELIVERED'
+                                ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800/50'
+                                : order.status === 'SHIPPED'
+                                ? 'bg-blue-950/40 text-blue-400 border-blue-800/50'
+                                : order.status === 'CANCELLED'
+                                ? 'bg-red-950/40 text-red-400 border-red-800/50'
+                                : 'bg-amber-950/40 text-amber-400 border-amber-800/50'
+                            }`}
+                          >
+                            <option value="PENDING" className="bg-[#14161d] text-white">PENDING</option>
+                            <option value="CONFIRMED" className="bg-[#14161d] text-white">CONFIRMED</option>
+                            <option value="SHIPPED" className="bg-[#14161d] text-white">SHIPPED</option>
+                            <option value="DELIVERED" className="bg-[#14161d] text-white">DELIVERED</option>
+                            <option value="CANCELLED" className="bg-[#14161d] text-white">CANCELLED</option>
+                          </select>
+                          <button
+                            type="submit"
+                            className="w-full bg-[#232731] hover:bg-[#2e3440] text-[10px] text-gray-300 py-1 rounded transition-colors"
+                          >
+                            Update Status
+                          </button>
+                        </form>
                       </td>
 
-                      <td className="py-4 px-6 space-y-1">
-                        {order.orderItems.map((item, idx) => (
-                          <div key={idx} className="text-[11px]">
-                            <span className="font-medium text-white">{item.productName}</span>{' '}
-                            <span className="text-gray-400">({item.variantSize} × {item.quantity})</span>
-                          </div>
-                        ))}
+                      {/* Tracking Form */}
+                      <td className="py-4 px-4 min-w-[200px]">
+                        <form action={updateTrackingInfo} className="space-y-1.5">
+                          <input type="hidden" name="orderId" value={order.id} />
+                          <input
+                            type="text"
+                            name="trackingNumber"
+                            defaultValue={order.trackingNumber || ''}
+                            placeholder="AWB / Tracking No."
+                            className="w-full bg-[#0d0f12] border border-[#232731] rounded px-2.5 py-1 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
+                          />
+                          <input
+                            type="text"
+                            name="courierName"
+                            defaultValue={order.courierName || 'DTDC / India Post'}
+                            placeholder="Courier (e.g. ST Courier)"
+                            className="w-full bg-[#0d0f12] border border-[#232731] rounded px-2.5 py-1 text-[10px] text-gray-400 placeholder-gray-600 focus:border-[#d9b444] outline-none"
+                          />
+                          <button
+                            type="submit"
+                            className="w-full bg-[#c69e2a]/20 hover:bg-[#c69e2a]/30 text-[#d9b444] border border-[#c69e2a]/40 text-[10px] py-1 rounded transition-colors"
+                          >
+                            Save Tracking
+                          </button>
+                        </form>
                       </td>
 
-                      <td className="py-4 px-6">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                          order.payment?.paymentMethod === 'COD'
-                            ? 'bg-amber-950/70 text-amber-400 border border-amber-800/60'
-                            : 'bg-green-950/70 text-green-400 border border-green-800/60'
-                        }`}>
-                          {order.payment?.paymentMethod || 'COD'}
-                        </span>
-                      </td>
-
-                      <td className="py-4 px-6">
-                        <span className="text-sm font-bold text-white font-mono">
-                          ₹{Number(order.grandTotal).toFixed(0)}
-                        </span>
-                      </td>
-
-                      <td className="py-4 px-6 text-center">
-                        <Link
-                          href={`/admin/orders/label?id=${order.id}`}
-                          target="_blank"
-                          className="inline-flex items-center gap-1.5 bg-[#c69e2a] hover:bg-[#d9b444] text-black font-bold px-3 py-1.5 rounded text-[11px] uppercase tracking-wider transition-colors shadow-sm"
-                        >
-                          🖨️ Print Label
-                        </Link>
+                      {/* WhatsApp Notify */}
+                      <td className="py-4 px-4 text-right whitespace-nowrap">
+                        {order.customerPhone || order.phone ? (
+                          <a
+                            href={`https://wa.me/${(order.customerPhone || order.phone).replace(/[^0-9]/g, '')}?text=${waMessage}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 hover:bg-[#25D366] hover:text-black px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+                          >
+                            <span>💬</span> WhatsApp
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-gray-600">No Phone</span>
+                        )}
                       </td>
                     </tr>
                   );
                 })
+              ) : (
+                <tr>
+                  <td colSpan={7} className="text-center py-12 text-gray-500 text-xs">
+                    No orders received yet. New customer orders will appear here automatically.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
