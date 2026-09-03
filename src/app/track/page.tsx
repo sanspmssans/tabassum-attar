@@ -38,18 +38,20 @@ export default async function TrackPage({
     }
   }
 
-  const getStepNumber = (status: string) => {
-    switch (status) {
+  const status = order?.orderStatus || 'PENDING';
+  const isCancelled = status === 'CANCELLED';
+
+  const getStepNumber = (currStatus: string) => {
+    switch (currStatus) {
       case 'PENDING': return 1;
       case 'CONFIRMED': return 2;
       case 'SHIPPED': return 3;
       case 'DELIVERED': return 4;
-      default: return 1;
+      default: return 0;
     }
   };
 
-  const status = order?.orderStatus || 'PENDING';
-  const currentStep = order ? getStepNumber(status) : 0;
+  const currentStep = getStepNumber(status);
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-[#fbf8f2] py-12 px-6">
@@ -94,34 +96,50 @@ export default async function TrackPage({
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] uppercase text-gray-400">Live Status</span>
-                    <p className="text-xs font-bold text-white uppercase bg-[#1f2430] px-2.5 py-1 rounded border border-[#2e3440] mt-0.5">
+                    <p
+                      className={`text-xs font-bold uppercase px-2.5 py-1 rounded border mt-0.5 inline-block ${
+                        isCancelled
+                          ? 'bg-red-950/50 text-red-400 border-red-800/60'
+                          : 'bg-[#1f2430] text-white border-[#2e3440]'
+                      }`}
+                    >
                       {status}
                     </p>
                   </div>
                 </div>
 
-                {/* Timeline Progress */}
-                <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-medium pt-2">
-                  <div className={`space-y-1 ${currentStep >= 1 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
-                    <div className={`h-1.5 rounded-full ${currentStep >= 1 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
-                    <span>Placed</span>
+                {/* Cancelled Banner or Normal Progress Timeline */}
+                {isCancelled ? (
+                  <div className="bg-red-950/20 border border-red-900/40 rounded-xl p-4 text-center space-y-2">
+                    <span className="text-2xl block">🚫</span>
+                    <p className="text-red-400 font-bold text-sm">Order Cancelled</p>
+                    <p className="text-gray-400 text-xs leading-relaxed">
+                      This order has been cancelled. If you have questions regarding payment or cancellation, please connect with our customer support on WhatsApp.
+                    </p>
                   </div>
-                  <div className={`space-y-1 ${currentStep >= 2 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
-                    <div className={`h-1.5 rounded-full ${currentStep >= 2 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
-                    <span>Confirmed</span>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-medium pt-2">
+                    <div className={`space-y-1 ${currentStep >= 1 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
+                      <div className={`h-1.5 rounded-full ${currentStep >= 1 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
+                      <span>Placed</span>
+                    </div>
+                    <div className={`space-y-1 ${currentStep >= 2 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
+                      <div className={`h-1.5 rounded-full ${currentStep >= 2 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
+                      <span>Confirmed</span>
+                    </div>
+                    <div className={`space-y-1 ${currentStep >= 3 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
+                      <div className={`h-1.5 rounded-full ${currentStep >= 3 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
+                      <span>Shipped</span>
+                    </div>
+                    <div className={`space-y-1 ${currentStep >= 4 ? 'text-emerald-400' : 'text-gray-600'}`}>
+                      <div className={`h-1.5 rounded-full ${currentStep >= 4 ? 'bg-emerald-400' : 'bg-[#232731]'}`} />
+                      <span>Delivered</span>
+                    </div>
                   </div>
-                  <div className={`space-y-1 ${currentStep >= 3 ? 'text-[#d9b444]' : 'text-gray-600'}`}>
-                    <div className={`h-1.5 rounded-full ${currentStep >= 3 ? 'bg-[#d9b444]' : 'bg-[#232731]'}`} />
-                    <span>Shipped</span>
-                  </div>
-                  <div className={`space-y-1 ${currentStep >= 4 ? 'text-emerald-400' : 'text-gray-600'}`}>
-                    <div className={`h-1.5 rounded-full ${currentStep >= 4 ? 'bg-emerald-400' : 'bg-[#232731]'}`} />
-                    <span>Delivered</span>
-                  </div>
-                </div>
+                )}
 
                 {/* Tracking Details */}
-                {order.shipping?.trackingNumber && (
+                {!isCancelled && order.shipping?.trackingNumber && (
                   <div className="bg-[#0e1015] border border-[#2e3440] rounded-xl p-4 space-y-1">
                     <span className="text-[10px] uppercase tracking-wider text-gray-400">
                       Courier Consignment
