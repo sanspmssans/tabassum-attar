@@ -3,7 +3,7 @@
 import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
-// Update order status
+// Update order fulfillment status
 export async function updateOrderStatus(formData: FormData) {
   const orderId = formData.get('orderId') as string;
   const status = formData.get('status') as string;
@@ -25,7 +25,7 @@ export async function updateOrderStatus(formData: FormData) {
   }
 }
 
-// Update tracking number & courier details (Exact Schema Match)
+// Update tracking number & courier details without overwriting DELIVERED status
 export async function updateTrackingInfo(formData: FormData) {
   const orderId = formData.get('orderId') as string;
   const trackingNumber = (formData.get('trackingNumber') as string)?.trim();
@@ -34,11 +34,22 @@ export async function updateTrackingInfo(formData: FormData) {
   if (!orderId || !trackingNumber) return;
 
   try {
-    // 1. Mark order as SHIPPED
-    await (prisma.order.update as any)({
+    // 1. Get current orderStatus
+    const existingOrder = await (prisma.order.findUnique as any)({
       where: { id: orderId },
-      data: { orderStatus: 'SHIPPED' },
+      select: { orderStatus: true },
     });
+
+    // Only set to SHIPPED if it was PENDING or CONFIRMED (Do NOT overwrite DELIVERED)
+    if (
+      existingOrder?.orderStatus === 'PENDING' ||
+      existingOrder?.orderStatus === 'CONFIRMED'
+    ) {
+      await (prisma.order.update as any)({
+        where: { id: orderId },
+        data: { orderStatus: 'SHIPPED' },
+      });
+    }
 
     // 2. Save directly to Shipping table
     await (prisma.shipping.upsert as any)({
