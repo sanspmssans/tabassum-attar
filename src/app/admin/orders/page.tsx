@@ -5,24 +5,44 @@ import { updateOrderStatus, updateTrackingInfo } from './actions';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminOrdersPage() {
-  // Fetch all orders with customer details and line items
-  const orders: any[] = await (prisma.order.findMany as any)({
-    include: {
-      items: {
-        include: {
-          product: true,
-          variant: true,
+  // Fetch orders with smart fallback to prevent empty state on relation mismatch
+  let orders: any[] = [];
+
+  try {
+    orders = await (prisma.order.findMany as any)({
+      include: {
+        items: {
+          include: {
+            product: true,
+            variant: true,
+          },
         },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  }).catch(() => []);
+      orderBy: { createdAt: 'desc' },
+    });
+  } catch {
+    try {
+      orders = await (prisma.order.findMany as any)({
+        include: {
+          orderItems: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch {
+      orders = await prisma.order.findMany({
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+    }
+  }
 
   // Summary Metrics
   const totalOrders = orders.length;
   const pendingOrders = orders.filter((o: any) => o.status === 'PENDING').length;
   const shippedOrders = orders.filter((o: any) => o.status === 'SHIPPED').length;
-  const totalRevenue = orders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount || o.total || 0)), 0);
+  const totalRevenue = orders.reduce(
+    (sum: number, o: any) => sum + Number(o.totalAmount || o.total || 0),
+    0
+  );
 
   return (
     <div className="space-y-8">
@@ -30,10 +50,10 @@ export default async function AdminOrdersPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#232731] pb-6">
         <div>
           <h2 className="text-2xl font-serif font-bold text-white tracking-wide">
-            Customer Orders
+            Customer Orders ({totalOrders})
           </h2>
           <p className="text-xs text-gray-400 mt-1">
-            Track customer shipments, update fulfillment stages, and manage tracking numbers.
+            Track customer shipments, print shipping labels, and manage fulfillment.
           </p>
         </div>
 
@@ -81,25 +101,26 @@ export default async function AdminOrdersPage() {
                 <th className="py-4 px-4">Customer & Contact</th>
                 <th className="py-4 px-4">Fragrances Ordered</th>
                 <th className="py-4 px-4">Total Amount</th>
-                <th className="py-4 px-4">Fulfillment Status</th>
+                <th className="py-4 px-4">Status</th>
                 <th className="py-4 px-4">Tracking Details</th>
-                <th className="py-4 px-4 text-right">Quick Notify</th>
+                <th className="py-4 px-4 text-right">Label & Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1f222b]">
               {orders.length > 0 ? (
                 orders.map((order: any) => {
-                  const items: any[] = order.items || [];
+                  const items: any[] = order.items || order.orderItems || [];
                   const orderDate = new Date(order.createdAt).toLocaleDateString('en-IN', {
                     day: 'numeric',
                     month: 'short',
                     year: 'numeric',
                   });
 
-                  // WhatsApp Shipping Notification Message
                   const waMessage = encodeURIComponent(
                     `Hello ${order.customerName || 'Customer'},\n\nYour order #${order.orderNumber || order.id.slice(-6).toUpperCase()} from Tabassum Attar has been updated to: ${order.status}.\n${
-                      order.trackingNumber ? `Tracking No: ${order.trackingNumber} (${order.courierName || 'Courier'})\nTrack here: https://tabassum-attar.vercel.app/track` : ''
+                      order.trackingNumber
+                        ? `Tracking No: ${order.trackingNumber} (${order.courierName || 'Courier'})\nTrack here: https://tabassum-attar.vercel.app/track`
+                        : ''
                     }\n\nThank you for choosing Tabassum Attar!`
                   );
 
@@ -115,7 +136,7 @@ export default async function AdminOrdersPage() {
 
                       {/* Customer Details */}
                       <td className="py-4 px-4 min-w-[200px]">
-                        <p className="font-semibold text-white text-xs">{order.customerName || 'Direct Customer'}</p>
+                        <p className="font-semibold text-white text-xs">{order.customerName || 'Customer'}</p>
                         <p className="text-[11px] text-gray-400">{order.customerPhone || order.phone || 'No Phone'}</p>
                         <p className="text-[10px] text-gray-500 mt-1 leading-relaxed line-clamp-2">
                           {order.shippingAddress || order.address || 'Address not provided'}
@@ -123,7 +144,7 @@ export default async function AdminOrdersPage() {
                       </td>
 
                       {/* Line Items */}
-                      <td className="py-4 px-4 min-w-[220px]">
+                      <td className="py-4 px-4 min-w-[200px]">
                         <div className="space-y-1.5">
                           {items.map((item: any, idx: number) => (
                             <div key={idx} className="text-[11px] text-gray-300">
@@ -131,12 +152,12 @@ export default async function AdminOrdersPage() {
                                 {item.product?.name || item.name || 'Artisanal Attar'}
                               </span>
                               <span className="text-[10px] text-gray-400 block">
-                                Size: {item.variant?.size || item.size || 'Standard'} × {item.quantity}
+                                Size: {item.variant?.size || item.size || 'Standard'} × {item.quantity || 1}
                               </span>
                             </div>
                           ))}
                           {items.length === 0 && (
-                            <span className="text-[10px] text-gray-600 italic">Custom Order</span>
+                            <span className="text-[10px] text-gray-500 italic">Fragrance Order</span>
                           )}
                         </div>
                       </td>
@@ -147,12 +168,12 @@ export default async function AdminOrdersPage() {
                           ₹{Number(order.totalAmount || order.total || 0).toLocaleString('en-IN')}
                         </span>
                         <span className="block text-[10px] text-gray-500 uppercase">
-                          {order.paymentMethod || 'UPI / COD'}
+                          {order.paymentMethod || 'COD'}
                         </span>
                       </td>
 
-                      {/* Status Selector */}
-                      <td className="py-4 px-4 min-w-[150px]">
+                      {/* Status */}
+                      <td className="py-4 px-4 min-w-[140px]">
                         <form action={updateOrderStatus} className="space-y-1.5">
                           <input type="hidden" name="orderId" value={order.id} />
                           <select
@@ -176,54 +197,56 @@ export default async function AdminOrdersPage() {
                           </select>
                           <button
                             type="submit"
-                            className="w-full bg-[#232731] hover:bg-[#2e3440] text-[10px] text-gray-300 py-1 rounded transition-colors"
+                            className="w-full bg-[#232731] hover:bg-[#2e3440] text-[10px] text-gray-300 py-1 rounded transition-colors cursor-pointer"
                           >
-                            Update Status
+                            Update
                           </button>
                         </form>
                       </td>
 
-                      {/* Tracking Form */}
-                      <td className="py-4 px-4 min-w-[200px]">
+                      {/* Tracking */}
+                      <td className="py-4 px-4 min-w-[180px]">
                         <form action={updateTrackingInfo} className="space-y-1.5">
                           <input type="hidden" name="orderId" value={order.id} />
                           <input
                             type="text"
                             name="trackingNumber"
                             defaultValue={order.trackingNumber || ''}
-                            placeholder="AWB / Tracking No."
-                            className="w-full bg-[#0d0f12] border border-[#232731] rounded px-2.5 py-1 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
-                          />
-                          <input
-                            type="text"
-                            name="courierName"
-                            defaultValue={order.courierName || 'DTDC / India Post'}
-                            placeholder="Courier (e.g. ST Courier)"
-                            className="w-full bg-[#0d0f12] border border-[#232731] rounded px-2.5 py-1 text-[10px] text-gray-400 placeholder-gray-600 focus:border-[#d9b444] outline-none"
+                            placeholder="Tracking / AWB No."
+                            className="w-full bg-[#0d0f12] border border-[#232731] rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:border-[#d9b444] outline-none"
                           />
                           <button
                             type="submit"
-                            className="w-full bg-[#c69e2a]/20 hover:bg-[#c69e2a]/30 text-[#d9b444] border border-[#c69e2a]/40 text-[10px] py-1 rounded transition-colors"
+                            className="w-full bg-[#c69e2a]/20 hover:bg-[#c69e2a]/30 text-[#d9b444] border border-[#c69e2a]/40 text-[10px] py-1 rounded transition-colors cursor-pointer"
                           >
                             Save Tracking
                           </button>
                         </form>
                       </td>
 
-                      {/* WhatsApp Notify */}
+                      {/* Print Label & WhatsApp Action */}
                       <td className="py-4 px-4 text-right whitespace-nowrap">
-                        {order.customerPhone || order.phone ? (
-                          <a
-                            href={`https://wa.me/${(order.customerPhone || order.phone).replace(/[^0-9]/g, '')}?text=${waMessage}`}
+                        <div className="flex flex-col items-end gap-1.5">
+                          {/* 🖨️ Shipping Label Print Button */}
+                          <Link
+                            href={`/admin/orders/label?id=${order.id}`}
                             target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 hover:bg-[#25D366] hover:text-black px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+                            className="inline-flex items-center gap-1 bg-[#d9b444] hover:bg-[#c69e2a] text-black px-2.5 py-1.5 rounded-md text-[11px] font-bold transition-all shadow cursor-pointer"
                           >
-                            <span>💬</span> WhatsApp
-                          </a>
-                        ) : (
-                          <span className="text-[10px] text-gray-600">No Phone</span>
-                        )}
+                            🖨️ Print Label
+                          </Link>
+
+                          {order.customerPhone || order.phone ? (
+                            <a
+                              href={`https://wa.me/${(order.customerPhone || order.phone).replace(/[^0-9]/g, '')}?text=${waMessage}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 hover:bg-[#25D366] hover:text-black px-2.5 py-1 rounded text-[10px] font-medium transition-all"
+                            >
+                              💬 WhatsApp
+                            </a>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
