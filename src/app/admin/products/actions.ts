@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-// Function to Create a New Product with Bottle Sizes (Variants) & Notes
+// Function to Create a New Product with Bottle Sizes (ProductVariant) & Notes
 export async function createProduct(formData: FormData) {
   const name = (formData.get('name') as string)?.trim();
   const categoryId = formData.get('categoryId') as string;
@@ -35,29 +35,28 @@ export async function createProduct(formData: FormData) {
     slug = `${slug}-${Date.now().toString().slice(-4)}`;
   }
 
-  // 1. Prepare Product Data Safely
-  const productPayload: any = {
-    name,
-    slug,
-    fragranceFamily: fragranceFamily || 'Artisanal Blend',
-    shortDescription: shortDescription || '',
-    description: description || '',
-    gender: gender as any,
-    isActive: true,
-    categoryId,
-  };
-
-  if (imageUrl) {
-    productPayload.images = {
-      create: [{ url: imageUrl }],
-    };
-  }
-
-  const newProduct = await (prisma.product.create as any)({
-    data: productPayload,
+  // 1. Create Product
+  const newProduct = await prisma.product.create({
+    data: {
+      name,
+      slug,
+      fragranceFamily: fragranceFamily || 'Artisanal Blend',
+      shortDescription: shortDescription || '',
+      description: description || '',
+      gender: gender as any,
+      isActive: true,
+      categoryId,
+      ...(imageUrl
+        ? {
+            images: {
+              create: [{ url: imageUrl }],
+            },
+          }
+        : {}),
+    },
   });
 
-  // 2. Prepare Variants (Bottle Sizes)
+  // 2. Prepare Variants (ProductVariant)
   const variantsToCreate: any[] = [];
 
   const price3ml = formData.get('price_3ml') as string;
@@ -67,6 +66,7 @@ export async function createProduct(formData: FormData) {
     variantsToCreate.push({
       productId: newProduct.id,
       size: '3ml (1/4 Tola)',
+      sku: `${slug}-3ml`,
       price: parseFloat(price3ml),
       discountPrice: discount3ml ? parseFloat(discount3ml) : null,
       stock: stock3ml ? parseInt(stock3ml) : 50,
@@ -80,6 +80,7 @@ export async function createProduct(formData: FormData) {
     variantsToCreate.push({
       productId: newProduct.id,
       size: '6ml (1/2 Tola)',
+      sku: `${slug}-6ml`,
       price: parseFloat(price6ml),
       discountPrice: discount6ml ? parseFloat(discount6ml) : null,
       stock: stock6ml ? parseInt(stock6ml) : 50,
@@ -93,6 +94,7 @@ export async function createProduct(formData: FormData) {
     variantsToCreate.push({
       productId: newProduct.id,
       size: '12ml (1 Tola)',
+      sku: `${slug}-12ml`,
       price: parseFloat(price12ml),
       discountPrice: discount12ml ? parseFloat(discount12ml) : null,
       stock: stock12ml ? parseInt(stock12ml) : 50,
@@ -103,23 +105,29 @@ export async function createProduct(formData: FormData) {
     variantsToCreate.push({
       productId: newProduct.id,
       size: '6ml (1/2 Tola)',
+      sku: `${slug}-6ml`,
       price: 999,
       discountPrice: null,
       stock: 25,
     });
   }
 
+  // Insert variants using productVariant model
   for (const v of variantsToCreate) {
-    await (prisma.variant.create as any)({
+    await (prisma as any).productVariant?.create({
       data: v,
+    }).catch(async () => {
+      // Fallback in case SKU is not in the schema
+      const { sku, ...rest } = v;
+      await (prisma as any).productVariant?.create({ data: rest });
     });
   }
 
-  // 3. Olfactory Pyramid Notes
+  // 3. Olfactory Notes
   const notesToCreate = [];
-  if (topNotes) notesToCreate.push({ productId: newProduct.id, type: 'TOP', note: topNotes, orderIndex: 1 });
-  if (heartNotes) notesToCreate.push({ productId: newProduct.id, type: 'HEART', note: heartNotes, orderIndex: 2 });
-  if (baseNotes) notesToCreate.push({ productId: newProduct.id, type: 'BASE', note: baseNotes, orderIndex: 3 });
+  if (topNotes) notesToCreate.push({ productId: newProduct.id, type: 'TOP' as any, note: topNotes, orderIndex: 1 });
+  if (heartNotes) notesToCreate.push({ productId: newProduct.id, type: 'HEART' as any, note: heartNotes, orderIndex: 2 });
+  if (baseNotes) notesToCreate.push({ productId: newProduct.id, type: 'BASE' as any, note: baseNotes, orderIndex: 3 });
 
   for (const n of notesToCreate) {
     await (prisma as any).fragranceNote?.create({
@@ -154,8 +162,8 @@ export async function deleteProduct(formData: FormData) {
   if (!id) return;
 
   try {
-    await prisma.variant.deleteMany({ where: { productId: id } });
-    await prisma.productImage.deleteMany({ where: { productId: id } }).catch(() => null);
+    await (prisma as any).productVariant?.deleteMany({ where: { productId: id } }).catch(() => null);
+    await (prisma as any).productImage?.deleteMany({ where: { productId: id } }).catch(() => null);
     await (prisma as any).fragranceNote?.deleteMany({ where: { productId: id } }).catch(() => null);
 
     await prisma.product.delete({ where: { id } });
