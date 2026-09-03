@@ -1,15 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 
 export default function DesktopNav({ categories = [] }: { categories?: any[] }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleWhatsAppSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +34,7 @@ export default function DesktopNav({ categories = [] }: { categories?: any[] }) 
         Home
       </Link>
 
-      {/* Fragrances Dropdown (Category -> Subcategory -> Items) */}
+      {/* Fragrances Dropdown */}
       <div
         className="relative"
         onMouseEnter={() => setShowDropdown(true)}
@@ -51,7 +57,6 @@ export default function DesktopNav({ categories = [] }: { categories?: any[] }) 
                     {cat.name}
                   </p>
 
-                  {/* Subcategories */}
                   {cat.children && cat.children.length > 0 &&
                     cat.children.map((sub: any) => (
                       <div key={sub.id} className="space-y-1">
@@ -76,7 +81,6 @@ export default function DesktopNav({ categories = [] }: { categories?: any[] }) 
                       </div>
                     ))}
 
-                  {/* Direct Products */}
                   {cat.products && cat.products.length > 0 && (!cat.children || cat.children.length === 0) && (
                     <div className="space-y-1">
                       {cat.products.map((p: any) => (
@@ -107,7 +111,7 @@ export default function DesktopNav({ categories = [] }: { categories?: any[] }) 
         <span>🔍</span> Track Order
       </Link>
 
-      {/* Contact Inquiry Button */}
+      {/* Contact Button */}
       <button
         type="button"
         onClick={() => setShowContactModal(true)}
@@ -116,68 +120,80 @@ export default function DesktopNav({ categories = [] }: { categories?: any[] }) 
         Contact
       </button>
 
-      {/* Contact Inquiry Popup Modal */}
-      {showContactModal && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm normal-case">
-          <div className="bg-[#101217] border border-[#232731] rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
-            <button
-              onClick={() => setShowContactModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl font-bold cursor-pointer"
-            >
-              ✕
-            </button>
-
-            <h3 className="text-lg font-serif text-[#d9b444] font-bold">Contact & Inquiries</h3>
-            <p className="text-xs text-gray-400 mt-1 mb-4">
-              Please enter your details to connect with us directly via WhatsApp.
-            </p>
-
-            <form onSubmit={handleWhatsAppSubmit} className="space-y-3 text-left">
-              <div>
-                <label className="block text-[11px] uppercase tracking-wider text-gray-400 mb-1">Your Name</label>
-                <input
-                  type="text"
-                  placeholder="Enter your name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  className="w-full bg-[#14161d] border border-[#232731] rounded-lg px-3 py-2 text-xs text-white focus:border-[#d9b444] outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] uppercase tracking-wider text-gray-400 mb-1">Mobile / WhatsApp Number</label>
-                <input
-                  type="tel"
-                  placeholder="e.g. +91 9846350490"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                  className="w-full bg-[#14161d] border border-[#232731] rounded-lg px-3 py-2 text-xs text-white focus:border-[#d9b444] outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] uppercase tracking-wider text-gray-400 mb-1">Message / Requirement</label>
-                <textarea
-                  rows={3}
-                  placeholder="Fragrance requirements, custom blends, or inquiries..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="w-full bg-[#14161d] border border-[#232731] rounded-lg px-3 py-2 text-xs text-white focus:border-[#d9b444] outline-none resize-none"
-                />
-              </div>
-
+      {/* Centered Modal using createPortal */}
+      {mounted &&
+        showContactModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
+            <div className="relative w-full max-w-md bg-[#101217] border border-[#232731] rounded-2xl p-6 shadow-2xl space-y-4">
               <button
-                type="submit"
-                className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-bold text-xs py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer uppercase tracking-wider mt-2"
+                type="button"
+                onClick={() => setShowContactModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl font-bold p-1 cursor-pointer"
               >
-                💬 Send via WhatsApp
+                ✕
               </button>
-            </form>
-          </div>
-        </div>
-      )}
+
+              <div>
+                <h3 className="text-lg font-serif text-[#d9b444] font-bold">Contact & Inquiries</h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  Please enter your details to connect with us directly via WhatsApp.
+                </p>
+              </div>
+
+              <form onSubmit={handleWhatsAppSubmit} className="space-y-3 text-left">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-gray-400 mb-1">
+                    Your Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter your name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    className="w-full bg-[#14161d] border border-[#232731] rounded-lg px-3 py-2 text-xs text-white focus:border-[#d9b444] outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-gray-400 mb-1">
+                    Mobile / WhatsApp Number
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. +91 9846350490"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                    className="w-full bg-[#14161d] border border-[#232731] rounded-lg px-3 py-2 text-xs text-white focus:border-[#d9b444] outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-gray-400 mb-1">
+                    Message / Requirement
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Fragrance requirements, custom blends, or inquiries..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="w-full bg-[#14161d] border border-[#232731] rounded-lg px-3 py-2 text-xs text-white focus:border-[#d9b444] outline-none resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-bold text-xs py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer uppercase tracking-wider mt-3"
+                >
+                  💬 Send via WhatsApp
+                </button>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
     </nav>
   );
 }
