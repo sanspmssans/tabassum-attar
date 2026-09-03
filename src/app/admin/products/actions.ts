@@ -35,25 +35,26 @@ export async function createProduct(formData: FormData) {
     slug = `${slug}-${Date.now().toString().slice(-4)}`;
   }
 
-  // 1. Create Product First
-  const newProduct = await prisma.product.create({
-    data: {
-      name,
-      slug,
-      fragranceFamily: fragranceFamily || 'Artisanal Blend',
-      shortDescription: shortDescription || '',
-      description: description || '',
-      gender: gender as any,
-      isActive: true,
-      categoryId,
-      ...(imageUrl
-        ? {
-            images: {
-              create: [{ url: imageUrl }],
-            },
-          }
-        : {}),
-    },
+  // 1. Prepare Product Data Safely
+  const productPayload: any = {
+    name,
+    slug,
+    fragranceFamily: fragranceFamily || 'Artisanal Blend',
+    shortDescription: shortDescription || '',
+    description: description || '',
+    gender: gender as any,
+    isActive: true,
+    categoryId,
+  };
+
+  if (imageUrl) {
+    productPayload.images = {
+      create: [{ url: imageUrl }],
+    };
+  }
+
+  const newProduct = await (prisma.product.create as any)({
+    data: productPayload,
   });
 
   // 2. Prepare Variants (Bottle Sizes)
@@ -98,7 +99,6 @@ export async function createProduct(formData: FormData) {
     });
   }
 
-  // Default fallback if no size was filled
   if (variantsToCreate.length === 0) {
     variantsToCreate.push({
       productId: newProduct.id,
@@ -109,18 +109,17 @@ export async function createProduct(formData: FormData) {
     });
   }
 
-  // Insert variants
   for (const v of variantsToCreate) {
-    await prisma.variant.create({
+    await (prisma.variant.create as any)({
       data: v,
     });
   }
 
-  // 3. Insert Olfactory Notes (Pyramid)
+  // 3. Olfactory Pyramid Notes
   const notesToCreate = [];
-  if (topNotes) notesToCreate.push({ productId: newProduct.id, type: 'TOP' as any, note: topNotes, orderIndex: 1 });
-  if (heartNotes) notesToCreate.push({ productId: newProduct.id, type: 'HEART' as any, note: heartNotes, orderIndex: 2 });
-  if (baseNotes) notesToCreate.push({ productId: newProduct.id, type: 'BASE' as any, note: baseNotes, orderIndex: 3 });
+  if (topNotes) notesToCreate.push({ productId: newProduct.id, type: 'TOP', note: topNotes, orderIndex: 1 });
+  if (heartNotes) notesToCreate.push({ productId: newProduct.id, type: 'HEART', note: heartNotes, orderIndex: 2 });
+  if (baseNotes) notesToCreate.push({ productId: newProduct.id, type: 'BASE', note: baseNotes, orderIndex: 3 });
 
   for (const n of notesToCreate) {
     await (prisma as any).fragranceNote?.create({
