@@ -4,19 +4,6 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
-interface Variant {
-  id: string;
-  size: string;
-  price: number;
-  discountPrice?: number | null;
-  stock: number;
-}
-
-interface Note {
-  type: string;
-  note: string;
-}
-
 export default function ProductInteractive({
   product,
   variants,
@@ -24,14 +11,14 @@ export default function ProductInteractive({
   imageUrl,
 }: {
   product: any;
-  variants: Variant[];
-  notes: Note[];
+  variants: any[];
+  notes: any[];
   imageUrl: string;
 }) {
-  const [selectedVariant, setSelectedVariant] = useState<Variant>(
+  const [selectedVariant, setSelectedVariant] = useState<any>(
     variants[0] || {
       id: 'default',
-      size: '6ml (1/2 Tola)',
+      labelSize: '6ml (1/2 Tola)',
       price: 999,
       discountPrice: null,
       stock: 10,
@@ -42,11 +29,14 @@ export default function ProductInteractive({
   const heartNote = notes.find((n) => n.type === 'HEART')?.note;
   const baseNote = notes.find((n) => n.type === 'BASE')?.note;
 
-  const currentPrice = selectedVariant.discountPrice || selectedVariant.price;
-  const hasDiscount = !!selectedVariant.discountPrice && selectedVariant.discountPrice < selectedVariant.price;
+  const currentPrice = Number(selectedVariant?.discountPrice || selectedVariant?.price || 0);
+  const originalPrice = Number(selectedVariant?.price || 0);
+  const hasDiscount = !!selectedVariant?.discountPrice && Number(selectedVariant.discountPrice) < originalPrice;
   const discountPercent = hasDiscount
-    ? Math.round(((selectedVariant.price - (selectedVariant.discountPrice || 0)) / selectedVariant.price) * 100)
+    ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
     : 0;
+
+  const currentStock = selectedVariant?.stock ?? selectedVariant?.inventory ?? 10;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
@@ -94,7 +84,7 @@ export default function ProductInteractive({
           </span>
           {hasDiscount && (
             <span className="text-base text-gray-500 line-through">
-              ₹{selectedVariant.price.toLocaleString('en-IN')}
+              ₹{originalPrice.toLocaleString('en-IN')}
             </span>
           )}
           <span className="text-[11px] text-gray-400">
@@ -102,36 +92,49 @@ export default function ProductInteractive({
           </span>
         </div>
 
-        {/* Interactive Bottle Size Selector (3ml, 6ml, 12ml) */}
+        {/* Bottle Size Selector (3ml, 6ml, 12ml) */}
         <div className="space-y-3">
           <div className="flex justify-between items-center text-xs">
             <span className="text-gray-300 font-semibold uppercase tracking-wider">
               Select Bottle Volume:
             </span>
-            <span className="text-[11px] text-gray-500">
-              {selectedVariant.stock > 0 ? `In Stock (${selectedVariant.stock})` : 'Out of Stock'}
+            <span className="text-[11px] text-gray-400">
+              {currentStock > 0 ? (
+                <span className="text-emerald-400 font-medium">In Stock</span>
+              ) : (
+                <span className="text-red-400 font-medium">Out of Stock</span>
+              )}
             </span>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            {variants.map((v) => {
-              const isSelected = selectedVariant.id === v.id;
+            {variants.map((v, idx) => {
+              const isSelected = selectedVariant?.id === v.id;
+              // Reads labelSize, size, volume, or fallback nicely
+              const sizeTitle =
+                v.labelSize ||
+                v.size ||
+                v.volume ||
+                (idx === 0 ? '3ml (1/4 Tola)' : idx === 1 ? '6ml (1/2 Tola)' : '12ml (1 Tola)');
+
+              const displayPrice = Number(v.discountPrice || v.price || 0);
+
               return (
                 <button
-                  key={v.id}
+                  key={v.id || idx}
                   type="button"
                   onClick={() => setSelectedVariant(v)}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
                     isSelected
-                      ? 'border-[#d9b444] bg-[#d9b444]/10 shadow-lg shadow-[#d9b444]/10'
+                      ? 'border-[#d9b444] bg-[#d9b444]/15 shadow-lg shadow-[#d9b444]/15'
                       : 'border-[#232731] bg-[#14161d] hover:border-gray-600'
                   }`}
                 >
                   <span className={`block text-xs font-bold ${isSelected ? 'text-[#d9b444]' : 'text-white'}`}>
-                    {v.size}
+                    {sizeTitle}
                   </span>
-                  <span className="text-[11px] text-gray-400 block mt-0.5">
-                    ₹{Number(v.discountPrice || v.price).toLocaleString('en-IN')}
+                  <span className="text-[11px] text-gray-400 block mt-1">
+                    ₹{displayPrice.toLocaleString('en-IN')}
                   </span>
                 </button>
               );
@@ -139,7 +142,7 @@ export default function ProductInteractive({
           </div>
         </div>
 
-        {/* Olfactory Pyramid Display */}
+        {/* Olfactory Notes Pyramid */}
         {(topNote || heartNote || baseNote) && (
           <div className="bg-[#14161d] border border-[#232731] rounded-2xl p-5 space-y-3">
             <h3 className="text-xs uppercase tracking-widest text-[#d9b444] font-semibold border-b border-[#232731] pb-2 flex items-center gap-2">
@@ -178,14 +181,16 @@ export default function ProductInteractive({
         {/* Order Actions */}
         <div className="pt-2 flex flex-col sm:flex-row gap-3">
           <Link
-            href={`/checkout?productId=${product.id}&variantId=${selectedVariant.id}`}
+            href={`/checkout?productId=${product.id}&variantId=${selectedVariant?.id}`}
             className="flex-1 bg-[#c69e2a] hover:bg-[#d9b444] text-black font-bold text-center py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-[#c69e2a]/20 cursor-pointer"
           >
             Buy Now • ₹{currentPrice.toLocaleString('en-IN')}
           </Link>
           <a
             href={`https://wa.me/919746333333?text=${encodeURIComponent(
-              `Hi Tabassum Attar, I am interested in ordering: ${product.name} (${selectedVariant.size}) for ₹${currentPrice}.`
+              `Hi Tabassum Attar, I would like to order: ${product.name} (${
+                selectedVariant?.labelSize || selectedVariant?.size || 'Standard'
+              }) for ₹${currentPrice}.`
             )}`}
             target="_blank"
             rel="noopener noreferrer"
