@@ -1,48 +1,76 @@
 import prisma from '@/lib/prisma';
-import Link from 'next/link';
 import CheckoutForm from './CheckoutForm';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CheckoutPage({
   searchParams,
 }: {
-  searchParams: { variantId?: string };
+  searchParams: { productId?: string; variantId?: string };
 }) {
-  const variant = searchParams.variantId
-    ? await prisma.productVariant.findUnique({
-        where: { id: searchParams.variantId },
-        include: { product: true, inventory: true },
-      })
-    : null;
+  const { productId, variantId } = searchParams;
 
-  const serializedVariant = variant
-    ? {
-        id: variant.id,
-        name: variant.product.name,
-        labelSize: variant.labelSize,
-        price: Number(variant.price),
-        discountPrice: variant.discountPrice ? Number(variant.discountPrice) : null,
-      }
-    : null;
+  if (!variantId && !productId) {
+    redirect('/');
+  }
+
+  let variant: any = null;
+
+  if (variantId) {
+    variant = await (prisma.productVariant.findUnique as any)({
+      where: { id: variantId },
+      include: { product: { include: { images: true } } },
+    }).catch(() => null);
+  }
+
+  if (!variant && productId) {
+    variant = await (prisma.productVariant.findFirst as any)({
+      where: { productId: productId },
+      include: { product: { include: { images: true } } },
+    }).catch(() => null);
+  }
+
+  if (!variant) {
+    return (
+      <div className="min-h-screen bg-[#0b0c10] text-white flex items-center justify-center p-6">
+        <div className="text-center space-y-3">
+          <h2 className="text-xl font-serif font-bold text-[#d9b444]">Product Variant Not Found</h2>
+          <p className="text-xs text-gray-400">The item you are trying to checkout is unavailable.</p>
+          <a href="/" className="inline-block bg-[#c69e2a] text-black font-bold text-xs px-5 py-2.5 rounded-xl uppercase tracking-wider">
+            Return to Store
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const product = variant.product || {};
+
+  // Serialize Decimal to Number for Client Component safety
+  const serializedVariant = {
+    ...variant,
+    price: Number(variant.price || 0),
+    discountPrice: variant.discountPrice ? Number(variant.discountPrice) : null,
+  };
+
+  const serializedProduct = {
+    ...product,
+    basePrice: Number(product.basePrice || 0),
+  };
 
   return (
-    <main className="min-h-screen bg-[#0b0c10] text-[#fbf8f2]">
-      <header className="border-b border-[#232731] bg-[#101217]/90 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-2xl font-serif tracking-widest text-[#d9b444] font-bold">
+    <div className="min-h-screen bg-[#0b0c10] text-[#fbf8f2] py-10 px-4 md:px-8">
+      <div className="max-w-6xl mx-auto space-y-8">
+        <div className="text-center space-y-2">
+          <a href="/" className="text-xl font-serif tracking-widest text-[#d9b444] font-bold">
             TABASSUM ATTAR
-          </Link>
-          <Link href="/" className="text-xs uppercase tracking-wider text-gray-400 hover:text-[#d9b444]">
-            ← Return to Store
-          </Link>
+          </a>
+          <h1 className="text-2xl font-serif font-bold text-white">Secure Express Checkout</h1>
         </div>
-      </header>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        <h1 className="text-2xl md:text-3xl font-serif text-white mb-8">Secure Express Checkout</h1>
-        <CheckoutForm variant={serializedVariant} />
+        <CheckoutForm product={serializedProduct} variant={serializedVariant} />
       </div>
-    </main>
+    </div>
   );
 }
