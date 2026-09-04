@@ -220,7 +220,7 @@ export default async function PrintShippingLabelPage({
             <span className="font-black uppercase block text-[9px] text-neutral-600">Sender / Return Address:</span>
             <p className="font-bold text-neutral-900">TABASSUM ATTAR</p>
             <p className="text-neutral-600">Kottakkal, Malappuram District, Kerala - 676503</p>
-            <p className="text-neutral-600">Support: +91 97463 33333</p>
+            <p className="text-neutral-600">Support: +91 7306610349</p>
           </div>
           <div className="text-right font-mono text-[9px] text-neutral-400">
             FRAGILE • HANDLE WITH CARE

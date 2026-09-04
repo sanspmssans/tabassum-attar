@@ -187,17 +187,17 @@ export default function ProductInteractive({
             Buy Now • ₹{currentPrice.toLocaleString('en-IN')}
           </Link>
           <a
-            href={`https://wa.me/919746333333?text=${encodeURIComponent(
-              `Hi Tabassum Attar, I would like to order: ${product.name} (${
-                selectedVariant?.labelSize || selectedVariant?.size || 'Standard'
-              }) for ₹${currentPrice}.`
-            )}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 bg-[#25D366]/20 hover:bg-[#25D366] text-[#25D366] hover:text-black border border-[#25D366]/40 font-bold text-center py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
-          >
-            <span>💬</span> Order via WhatsApp
-          </a>
+  href={`https://wa.me/917306610349?text=${encodeURIComponent(
+    `Hi Tabassum Attar, I would like to order: ${product.name} (${
+      selectedVariant?.labelSize || selectedVariant?.size || 'Standard'
+    }) for ₹${currentPrice}.`
+  )}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="flex-1 bg-[#25D366]/20 hover:bg-[#25D366] text-[#25D366] hover:text-black border border-[#25D366]/40 font-bold text-center py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+>
+  <span>💬</span> Order via WhatsApp
+</a>
         </div>
       </div>
     </div>
