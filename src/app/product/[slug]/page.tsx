@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import ProductInteractive from './ProductInteractive';
+import ProductReviews from './ProductReviews';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,17 @@ export default async function ProductDetailsPage({
       notes: { orderBy: { orderIndex: 'asc' } },
       images: true,
       category: true,
+      reviews: {
+        where: { isApproved: true },
+        include: {
+          customer: {
+            include: {
+              user: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      },
     },
   }).catch(() => null);
 
@@ -27,6 +39,7 @@ export default async function ProductDetailsPage({
   const imageUrl = product.images?.[0]?.url || '';
   const variants = product.variants || [];
   const notes = product.notes || [];
+  const reviews = product.reviews || [];
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-[#fbf8f2] py-10 px-4 md:px-8">
@@ -40,12 +53,19 @@ export default async function ProductDetailsPage({
           <span className="text-[#d9b444] font-medium">{product.name}</span>
         </div>
 
-        {/* Interactive Showcase */}
+        {/* Interactive Product Details Stage */}
         <ProductInteractive
           product={product}
           variants={variants}
           notes={notes}
           imageUrl={imageUrl}
+        />
+
+        {/* Customer Reviews & Star Ratings Section */}
+        <ProductReviews
+          productId={product.id}
+          slug={params.slug}
+          reviews={reviews}
         />
       </div>
     </div>
